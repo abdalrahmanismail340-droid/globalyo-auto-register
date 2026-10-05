@@ -53,15 +53,19 @@ async function waitForResetEmail(acc, sinceTime, timeoutMs = 180000, onProgress 
       if (isNaN(recv) || recv < sinceTime - 10000) continue;
       const subj = (m.subject || '').toLowerCase();
       const body = (m.body || {}).content || '';
-      if (/reset|password/.test(subj)) {
+      if (/reset|password|contrase/.test(subj)) {
         const text = body.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ');
-        // Try: reset link with token, or a raw token
-        const linkM = text.match(/https?:\/\/[^\s"']*reset[^\s"']*/i);
+        // Extract all links from raw HTML (href attributes) + plain text URLs
+        const allLinks = [...body.matchAll(/href=["'](https?:\/\/[^"']+)["']/gi)].map(m => m[1]);
+        const textUrls = [...text.matchAll(/(https?:\/\/[^\s]+)/gi)].map(m => m[1]);
+        const links = [...new Set([...allLinks, ...textUrls])];
+        say(`🔗 لقيت ${links.length} لينك في الإيميل`);
+        for (const l of links.slice(0, 5)) say(`🔗 ${l.slice(0, 150)}`);
+        const linkM = links.find(l => /reset|token|password/i.test(l)) || links[0];
         const tokenM = text.match(/(?:token|code)[^0-9a-zA-Z]{0,20}([a-zA-Z0-9\-_]{10,})/i);
         console.log('📧 Reset email:', m.subject);
         say(`📧 إيميل الاسترجاع وصل: ${m.subject}`);
-        console.log('🔍 Context:', text.slice(0, 300));
-        return { link: linkM ? linkM[0] : null, token: tokenM ? tokenM[1] : null, fullText: text };
+        return { link: linkM || null, token: tokenM ? tokenM[1] : null, allLinks: links, fullText: text };
       }
     }
     await new Promise(r2 => setTimeout(r2, 8000));
@@ -103,8 +107,17 @@ async function setPassword(email, newPass, onProgress = () => {}) {
   // Step 2: Read reset email
   say('✉️ مستني إيميل الاسترجاع...');
   const since = Date.now();
-  const { link, token } = await waitForResetEmail(acc, since, 180000, say);
-  const resetToken = token || (link && (link.match(/(?:token|code)=([^&]+)/) || [])[1]);
+  const { link, token, allLinks } = await waitForResetEmail(acc, since, 180000, say);
+  // Extract reset_token from link query params or path
+  let resetToken = token;
+  const linksToTry = [...(allLinks || []), link].filter(Boolean);
+  for (const l of linksToTry) {
+    if (resetToken) break;
+    const qm = l.match(/[?&](token|reset_token|code|key)=([^&]+)/i);
+    if (qm) { resetToken = decodeURIComponent(qm[2]); break; }
+    const pm = l.match(/\/([a-f0-9\-]{20,})\/?(?:\?|$)/i);
+    if (pm) { resetToken = pm[1]; break; }
+  }
   if (!resetToken) throw new Error('ملقتش توكن الاسترجاع في الإيميل');
   say(`🔑 التوكن وصل`);
 
