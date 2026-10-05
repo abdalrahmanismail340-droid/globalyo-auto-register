@@ -60,6 +60,7 @@ const help = `🤖 <b>Global YO Register Bot</b>
 /plans &lt;id&gt; — باقات دولة معينة
 /regions — المناطق (Global, Europe, ...)
 /rplans &lt;id&gt; — باقات منطقة (هات الـ id من /regions)
+/buy &lt;product_id&gt; [كود_خصم] — شراء باقة بالفيزا
 /auto &lt;hours&gt; — تسجيل تلقائي كل N ساعة (مثال: /auto 6)
 /auto off — إيقاف الوضع التلقائي
 /status — الحالة
@@ -292,6 +293,50 @@ async function handleUpdate(u) {
           chunk += line;
         }
         await send(chatId, chunk);
+      } catch (e) { await send(chatId, `❌ ${e.message}`); }
+      break;
+    }
+    case '/buy': {
+      const pid = args[0];
+      const promo = args[1] || null;
+      if (!pid) {
+        await send(chatId, 'استخدم: <code>/buy [product_id] [كود_خصم]</code>\nهات الـ product_id من /plans أو /rplans\nمثال: <code>/buy abc123</code>\nمثال بكود: <code>/buy abc123 SAVE10</code>');
+        break;
+      }
+      try {
+        const { loadToken } = require('./plans');
+        const { token } = loadToken();
+        const H = { 'Authorization': `Bearer ${token}`, 'X-PLATFORM': 'android', 'User-Agent': 'GlobalYO/4.1.5 (Android)', 'Content-Type': 'application/json' };
+        
+        // Validate promo if given
+        if (promo) {
+          await send(chatId, `🎟️ بتحقق من كود <code>${promo}</code>...`);
+          const pr = await fetch(API + `/v1.0/esim/promo-codes/${promo}/validate/`, { headers: H });
+          const pt = await pr.text();
+          if (!pr.ok) {
+            await send(chatId, `❌ الكود مش شغال: ${pt.slice(0, 200)}`);
+            break;
+          }
+          await send(chatId, `✅ الكود شغال!`);
+        }
+
+        await send(chatId, `💳 بعمل الأوردر...`);
+        const body = {
+          product_id: pid,
+          payment_method: 'card',
+          yo_calls_enabled: false,
+          ...(promo && { promo_code: promo }),
+        };
+        const r = await fetch(API + '/v1.0/esim/orders/', {
+          method: 'POST', headers: H, body: JSON.stringify(body),
+        });
+        const t = await r.text();
+        if (!r.ok) {
+          await send(chatId, `❌ فشل الأوردر (${r.status}):\n<code>${t.slice(0, 500)}</code>`);
+          break;
+        }
+        const j = JSON.parse(t);
+        await send(chatId, `✅ <b>الأوردر اتعمل!</b>\n\nID: <code>${j.id || j.order_id || '?'}</code>\n\n${t.slice(0, 800)}`);
       } catch (e) { await send(chatId, `❌ ${e.message}`); }
       break;
     }
