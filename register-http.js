@@ -77,9 +77,8 @@ async function waitForOTP(acc, sinceTime, timeoutMs = 180000, onTick) {
           || text.match(/\b(\d{4,6})\b/);
         if (otpM) {
           const otp = otpM[1];
-          say(`📧 الإيميل: ${m.subject}`);
-          say(`🔍 النص: ...${text.slice(Math.max(0, text.indexOf(otp)-40), text.indexOf(otp)+50)}...`);
-          return { otp, subject: m.subject };
+          const ctx = text.slice(Math.max(0, text.indexOf(otp)-40), text.indexOf(otp)+50);
+          return { otp, subject: m.subject, context: ctx };
         }
       }
     }
@@ -123,8 +122,9 @@ async function registerAccount({ firstName = 'Abood', lastName = 'Test', onProgr
   // Step 2: Wait for OTP email (only emails after our request)
   say('✉️ مستني إيميل الكود...');
   const reqTime = Date.now();
-  const { otp, subject } = await waitForOTP(acc, reqTime, 180000, (s) => { if (s % 30 === 0) say(`✉️ مستني... (${s}s)`); });
+  const { otp, subject, context } = await waitForOTP(acc, reqTime, 180000, (s) => { if (s % 30 === 0) say(`✉️ مستني... (${s}s)`); });
   say(`🔢 الكود وصل: ${otp}`);
+  if (context) say(`🔍 السياق: ...${context}...`);
 
   // Step 3: Verify OTP
   say('✅ بتحقق من الكود...');
