@@ -13,7 +13,8 @@ async function main() {
   const t = await r.text();
   if (!r.ok) { console.log(t.slice(0, 300)); return; }
   const j = JSON.parse(t);
-  const products = j.results || j.products || j.data || [];
+  console.log('Keys:', Object.keys(j).join(', '));
+  const products = j.results || j.products || j.plans || j.data || [];
   console.log('Found', products.length, 'products');
   for (const p of products.slice(0, 5)) {
     console.log(`${p.name || p.title} → ${p.id || p.product_id}`);
