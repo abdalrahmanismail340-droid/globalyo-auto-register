@@ -51,6 +51,22 @@ async function waitForInboxEmail(token, timeoutMs = 150000, onTick) {
 
 async function registerAccount({ firstName = 'Abood', lastName = 'Test', onProgress = () => {} } = {}) {
   const say = (m) => { try { onProgress(m); } catch (e) {} };
+  const MAX_TRIES = 3;
+  let lastErr;
+  for (let attempt = 1; attempt <= MAX_TRIES; attempt++) {
+    try {
+      if (attempt > 1) say(`🔄 محاولة ${attempt}/${MAX_TRIES}...`);
+      return await attemptOnce({ firstName, lastName, say });
+    } catch (e) {
+      lastErr = e;
+      say(`⚠️ المحاولة ${attempt} فشلت: ${e.message}`);
+      if (attempt < MAX_TRIES) await new Promise(r => setTimeout(r, 5000));
+    }
+  }
+  throw lastErr;
+}
+
+async function attemptOnce({ firstName, lastName, say }) {
   const password = randPass();
 
   say('📧 بعمل إيميل مؤقت...');
@@ -115,11 +131,30 @@ async function registerAccount({ firstName = 'Abood', lastName = 'Test', onProgr
 
     if (await page.locator('canvas#canv').count()) {
       say('🧩 بحل الكابتشا...');
-      await page.evaluate(() => { window.__captchaChars = []; });
-      await page.locator('#reload_href').click().catch(() => {});
-      await page.waitForTimeout(1200);
-      const answer = await page.evaluate(() => (window.__captchaChars || []).join(''));
-      if (!answer) throw new Error('could not capture captcha text from canvas');
+      // The captcha draws on mount; wait until our fillText hook has captured the chars.
+      // Take the LAST 6 in case of a double-draw (p always holds the latest).
+      const readCaptcha = () => page.evaluate(() =>
+        ((window.__captchaChars || []).slice(-6).join('')));
+      try {
+        await page.waitForFunction(() => (window.__captchaChars || []).length >= 6, { timeout: 20000 });
+      } catch (e) { /* try reload fallback below */ }
+      let answer = await readCaptcha();
+      if (!answer || answer.length < 6) {
+        // force a fresh draw via the site's own reload handler, then wait for it
+        await page.evaluate(() => {
+          window.__captchaChars = [];
+          const a = document.getElementById('reload_href');
+          if (a) a.click();
+        });
+        try {
+          await page.waitForFunction(() => (window.__captchaChars || []).length >= 6, { timeout: 20000 });
+        } catch (e) { /* fall through to error */ }
+        answer = await readCaptcha();
+      }
+      if (!answer || answer.length < 6) {
+        await page.screenshot({ path: 'captcha-fail.png' }).catch(() => {});
+        throw new Error('could not capture captcha text from canvas');
+      }
       await page.locator('input#captcha, input[id="captcha"]').fill(answer);
       await killPopups();
       await page.locator('button[type="submit"]').first().click();
