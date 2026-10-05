@@ -17,9 +17,10 @@
  */
 const fs = require('fs');
 const path = require('path');
-// Use Termux/CDP version on Android (Playwright doesn't support Android)
+// On Termux/Android: use pure-HTTP OTP registration (no browser needed)
+// Elsewhere: use the browser-based version
 const { registerAccount } = process.env.TERMUX_VERSION
-  ? require('./lib-termux')
+  ? require('./register-http')
   : require('./lib');
 
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
