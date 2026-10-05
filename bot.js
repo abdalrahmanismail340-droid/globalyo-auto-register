@@ -53,11 +53,10 @@ async function tg(method, body = {}) {
 const send = (chatId, text) => tg('sendMessage', { chat_id: chatId, text, parse_mode: 'HTML', disable_web_page_preview: true }).catch(e => console.error('send failed:', e.message));
 
 const help = `🤖 <b>Global YO Register Bot</b>
-/register [first] [last] — تسجيل حساب جديد دلوقتي
+/register [first] [last] [password] — تسجيل حساب جديد (مثال: /register Abood Test Aabdo123#)
 /sethotmails — ابعت ملف الـ txt بتاع الهوتميلات
 /countries — قايمة الدول المتاحة
 /plans &lt;id&gt; — باقات دولة معينة (هات الـ id من /countries)
-/setpassword &lt;pass&gt; — تعيين باسورد للحساب (عشان تدخل من التطبيق)
 /auto &lt;hours&gt; — تسجيل تلقائي كل N ساعة (مثال: /auto 6)
 /auto off — إيقاف الوضع التلقائي
 /status — الحالة
@@ -84,21 +83,21 @@ function isAllowed(userId) {
   return ALLOWED.length === 0 || ALLOWED.includes(String(userId));
 }
 
-async function doRegister(chatId, first, last) {
+async function doRegister(chatId, first, last, password) {
   if (state.running) { await send(chatId, '⏳ في تسجيل شغال بالفعل، استنى يخلص'); return; }
   state.running = true;
   const t0 = Date.now();
   try {
     await send(chatId, `🚀 بدأ التسجيل (${first} ${last})...`);
     const acc = await registerAccount({
-      firstName: first, lastName: last,
+      firstName: first, lastName: last, password,
       onProgress: (m) => send(chatId, m),
     });
     state.done++;
     const mins = Math.round((Date.now() - t0) / 60000);
     await send(chatId,
       `✅ <b>حساب جديد جاهز</b> (${mins} د)\n\n` +
-      `📧 <code>${acc.email}</code>\n🔑 <code>${acc.password}</code>\n👤 ${acc.firstName} ${acc.lastName}`);
+      `📧 <code>${acc.email}</code>\n🔑 <code>${acc.password}</code>\n👤 ${first} ${last}`);
   } catch (e) {
     state.failed++;
     await send(chatId, `❌ فشل التسجيل: ${e.message}`);
@@ -176,6 +175,7 @@ async function handleUpdate(u) {
     case '/register': {
       const first = args[0] || 'Abood';
       const last = args[1] || 'Test';
+      const password = args[2] || null;
       // quick check: are there any hotmail accounts?
       try {
         const { loadHotmailAccounts } = require('./lib');
@@ -184,7 +184,7 @@ async function handleUpdate(u) {
           break;
         }
       } catch {}
-      doRegister(chatId, first, last); // async, don't await
+      doRegister(chatId, first, last, password); // async, don't await
       break;
     }
     case '/sethotmails':
@@ -248,23 +248,6 @@ async function handleUpdate(u) {
           chunk += line;
         }
         await send(chatId, chunk);
-      } catch (e) { await send(chatId, `❌ ${e.message}`); }
-      break;
-    }
-    case '/setpassword': {
-      const np = args[0];
-      if (!np || np.length < 6) { await send(chatId, 'استخدم: /setpassword &lt;باسورد 6 حروف على الأقل&gt;'); break; }
-      try {
-        const { loadToken, authHeaders, API } = require('./plans');
-        const { token, email } = loadToken();
-        await send(chatId, '🔑 بعين الباسورد...');
-        const r = await fetch(API + '/v1.0/identity/password/', {
-          method: 'POST', headers: authHeaders(token),
-          body: JSON.stringify({ password: np, password2: np }),
-        });
-        const j = await r.json().catch(() => ({}));
-        if (!r.ok) { await send(chatId, `❌ فشل: ${r.status} ${JSON.stringify(j).slice(0, 200)}`); break; }
-        await send(chatId, `✅ الباسورد اتعين للحساب <code>${email}</code>\nتقدر تدخل من التطبيق دلوقتي`);
       } catch (e) { await send(chatId, `❌ ${e.message}`); }
       break;
     }

@@ -101,7 +101,7 @@ async function apiCall(path, body, say) {
   return { status: r.status, body: j };
 }
 
-async function registerAccount({ firstName = 'Abood', lastName = 'Test', onProgress = () => {} } = {}) {
+async function registerAccount({ firstName = 'Abood', lastName = 'Test', password = null, onProgress = () => {} } = {}) {
   const say = (m) => { try { onProgress(m); } catch {} };
   const acc = nextAccount();
   const email = acc.email;
@@ -113,9 +113,13 @@ async function registerAccount({ firstName = 'Abood', lastName = 'Test', onProgr
     return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
   });
 
-  // Step 1: Request OTP
+  // Password: user-provided or generated
+  const pwd = password || ('Yo' + Math.random().toString(36).slice(2, 10) + 'A1#');
+
+  // Step 1: Request OTP (include password so account is created with it)
   say('📤 بطلب كود التفعيل...');
-  const reg = await apiCall('/identity/email-otp-registration/', { email, first_name: firstName, last_name: lastName, device_id: deviceId }, say);
+  const regBody = { email, first_name: firstName, last_name: lastName, device_id: deviceId, password: pwd };
+  const reg = await apiCall('/identity/email-otp-registration/', regBody, say);
   if (reg.status === 403) throw new Error('الـ API اتصد (403) — الـ IP متعلم عليه');
   if (reg.status !== 200 && reg.status !== 201) throw new Error(`فشل طلب الكود: ${reg.status}`);
 
@@ -131,7 +135,7 @@ async function registerAccount({ firstName = 'Abood', lastName = 'Test', onProgr
   const ver = await apiCall('/identity/email-otp-verification/', { email, otp, device_id: deviceId }, say);
   if (ver.status !== 200 && ver.status !== 201) throw new Error(`فشل التحقق: ${ver.status}`);
 
-  const out = { email, hotmailPassword: acc.password, verifiedAt: new Date().toISOString(), apiResponse: ver.body };
+  const out = { email, password: pwd, hotmailPassword: acc.password, verifiedAt: new Date().toISOString(), apiResponse: ver.body };
   // Extract auth token (field name varies: access_token / access / token)
   const b = ver.body || {};
   out.accessToken = b.access_token || b.access || b.token || (b.data && (b.data.access_token || b.data.token)) || null;
