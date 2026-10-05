@@ -54,6 +54,7 @@ const send = (chatId, text) => tg('sendMessage', { chat_id: chatId, text, parse_
 
 const help = `🤖 <b>Global YO Register Bot</b>
 /register [first] [last] [password] — تسجيل حساب جديد (مثال: /register Abood Test Aabdo123#)
+/setpassword &lt;email&gt; &lt;pass&gt; — تعيين باسورد لحساب موجود
 /sethotmails — ابعت ملف الـ txt بتاع الهوتميلات
 /countries — قايمة الدول المتاحة
 /plans &lt;id&gt; — باقات دولة معينة (هات الـ id من /countries)
@@ -248,6 +249,21 @@ async function handleUpdate(u) {
           chunk += line;
         }
         await send(chatId, chunk);
+      } catch (e) { await send(chatId, `❌ ${e.message}`); }
+      break;
+    }
+    case '/setpassword': {
+      const em = args[0];
+      const np = args[1];
+      if (!em || !em.includes('@') || !np || np.length < 6) {
+        await send(chatId, 'استخدم: /setpassword &lt;email&gt; &lt;باسورد 6+&gt;\nمثال: /setpassword test@hotmail.com Aabdo123#');
+        break;
+      }
+      try {
+        const { setPassword } = require('./set-password');
+        await send(chatId, `🔑 بعين باسورد لـ <code>${em}</code>...`);
+        await setPassword(em, np, (m) => send(chatId, m));
+        await send(chatId, `✅ الباسورد اتعين!\n📧 <code>${em}</code>\n🔑 <code>${np}</code>\nتقدر تدخل من التطبيق دلوقتي`);
       } catch (e) { await send(chatId, `❌ ${e.message}`); }
       break;
     }
