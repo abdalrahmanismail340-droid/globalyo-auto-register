@@ -15,7 +15,7 @@ async function main() {
   const j = JSON.parse(t);
   const products = Array.isArray(j) ? j : (j.results || j.products || j.plans || j.data || []);
   console.log('Found', products.length, 'products');
-  for (const p of products.slice(0, 5)) {
+  for (const p of products) {
     console.log(`${p.name || p.title} → ${p.id || p.product_id}`);
   }
 }
