@@ -66,7 +66,7 @@ async function main() {
     body: JSON.stringify({ email, password, device_id: deviceId }),
   });
   const lt = await lr.text();
-  console.log(`← ${lr.status}`);
+  console.log(`← ${lr.status}: ${lt.slice(0, 300)}`);
   if (lr.ok) {
     const lj = JSON.parse(lt);
     const out = {
