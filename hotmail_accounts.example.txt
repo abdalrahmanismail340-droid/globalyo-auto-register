@@ -1,0 +1,5 @@
+# Hotmail accounts for registration — one per line:
+# email:password  (or email|password)
+# Example:
+# user1@hotmail.com:MyPass123
+# user2@outlook.com:OtherPass456

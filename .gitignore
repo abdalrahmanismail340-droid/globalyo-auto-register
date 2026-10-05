@@ -3,3 +3,6 @@ account-*.json
 tmp-account.json
 *.png
 *.log
+hotmail_accounts.json
+hotmail_accounts.txt
+.used_hotmails.json

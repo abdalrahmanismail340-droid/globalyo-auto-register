@@ -15,38 +15,90 @@ const path = require('path');
 const EPROXY = process.env.HTTPS_PROXY || process.env.https_proxy || '';
 const SANDBOX = /hatch-egress-proxy/.test(EPROXY);
 
-const MAILTM = 'https://api.mail.tm';
 const SIGNUP_URL = 'https://www.globalyo.com/sign-up';
 
 const rand = (n, chars = 'abcdefghijklmnopqrstuvwxyz0123456789') =>
   Array.from({ length: n }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
 const randPass = (n = 16) => rand(n, 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789!@#$%^&*');
 
-async function mtm(p, opts = {}) {
-  const r = await fetch(MAILTM + p, opts);
-  if (!r.ok) throw new Error(`mail.tm ${p} -> ${r.status}`);
-  return r.json();
-}
+const { ImapFlow } = require('imapflow');
 
-async function newTempEmail() {
-  const { 'hydra:member': domains } = await mtm('/domains');
-  const domain = domains.find(d => d.isActive).domain;
-  const address = `user${rand(10)}@${domain}`;
-  const password = randPass(20);
-  await mtm('/accounts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ address, password }) });
-  const { token } = await mtm('/token', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ address, password }) });
-  return { address, password, token };
-}
+// Hotmail account pool: reads accounts from hotmail_accounts.json (or .txt).
+// Supported formats:
+//   JSON: [{"email":"a@hotmail.com","password":"..."}, ...]
+//   TXT:  one per line as  email:password  (or email|password)
+// Used accounts are tracked in .used_hotmails.json so each /register uses a fresh one.
+const HOTMAIL_FILE = path.join(__dirname, 'hotmail_accounts.json');
+const HOTMAIL_TXT = path.join(__dirname, 'hotmail_accounts.txt');
+const USED_FILE = path.join(__dirname, '.used_hotmails.json');
 
-async function waitForInboxEmail(token, timeoutMs = 150000, onTick) {
-  const t0 = Date.now();
-  while (Date.now() - t0 < timeoutMs) {
-    const { 'hydra:member': msgs } = await mtm('/messages', { headers: { Authorization: `Bearer ${token}` } });
-    if (msgs.length) return msgs[0];
-    if (onTick) onTick(Math.round((Date.now() - t0) / 1000));
-    await new Promise(r => setTimeout(r, 5000));
+function loadHotmailAccounts() {
+  let accounts = [];
+  if (fs.existsSync(HOTMAIL_FILE)) {
+    try { accounts = JSON.parse(fs.readFileSync(HOTMAIL_FILE, 'utf8')); } catch {}
+  } else if (fs.existsSync(HOTMAIL_TXT)) {
+    accounts = fs.readFileSync(HOTMAIL_TXT, 'utf8').split('\n')
+      .map(l => l.trim()).filter(l => l && !l.startsWith('#'))
+      .map(l => {
+        const m = l.match(/^([^:|;\s]+)\s*[:|;]\s*(\S+)(?:\s*[:|;]\s*(\S+))?/);
+        return m ? { email: m[1].trim(), password: m[2].trim(), extra: m[3] || '' } : null;
+      }).filter(Boolean);
   }
-  throw new Error('timed out waiting for verification email');
+  return accounts.filter(a => a.email && a.password);
+}
+
+function getUsedSet() {
+  try { return new Set(JSON.parse(fs.readFileSync(USED_FILE, 'utf8'))); }
+  catch { return new Set(); }
+}
+
+function nextHotmailAccount() {
+  const accounts = loadHotmailAccounts();
+  if (!accounts.length) throw new Error('مفيش هوتميلات! حط ملف hotmail_accounts.json أو hotmail_accounts.txt جنب البوت');
+  const used = getUsedSet();
+  const fresh = accounts.find(a => !used.has(a.email.toLowerCase()));
+  if (!fresh) throw new Error('كل الهوتميلات استُخدمت! ابعت ملف جديد أو امسح .used_hotmails.json');
+  return fresh;
+}
+
+function markHotmailUsed(email) {
+  const used = getUsedSet();
+  used.add(email.toLowerCase());
+  try { fs.writeFileSync(USED_FILE, JSON.stringify([...used], null, 1)); } catch {}
+}
+
+// Wait for the Global YO verification email in a Hotmail inbox via IMAP.
+async function waitForHotmailVerify({ email, password }, timeoutMs = 180000, onTick) {
+  const client = new ImapFlow({
+    host: 'outlook.office365.com', port: 993, secure: true,
+    auth: { user: email, pass: password },
+    logger: false,
+  });
+  await client.connect();
+  try {
+    const lock = await client.getMailboxLock('INBOX');
+    try {
+      const t0 = Date.now();
+      while (Date.now() - t0 < timeoutMs) {
+        // search recent unseen (or all recent) messages
+        const ids = await client.search({ since: new Date(Date.now() - 3600e3) }, { uid: true });
+        for (const uid of ids.slice(-10)) {
+          const msg = await client.fetchOne(uid.toString(), { bodyParts: ['text'], envelope: true });
+          const subj = (msg.envelope.subject || '').toLowerCase();
+          const from = ((msg.envelope.from || [])[0] || {}).address || '';
+          if (/global|yomobile|verify|verification/.test(subj + ' ' + from)) {
+            const body = (msg.bodyParts || []).map(p => p.toString()).join('\n');
+            const link = (body.match(/https?:\/\/[^\s"'<>]*verif[^\s"'<>]*/i)
+              || body.match(/https?:\/\/[^\s"'<>]*token[^\s"'<>]*/i) || [])[0];
+            if (link) return { subject: msg.envelope.subject, link };
+          }
+        }
+        if (onTick) onTick(Math.round((Date.now() - t0) / 1000));
+        await new Promise(r => setTimeout(r, 8000));
+      }
+      throw new Error('timed out waiting for verification email in Hotmail');
+    } finally { lock.release(); }
+  } finally { await client.logout().catch(() => {}); }
 }
 
 // Fallback: screenshot the captcha canvas and read it with OCR.Space (free API).
@@ -88,8 +140,10 @@ async function registerAccount({ firstName = 'Abood', lastName = 'Test', onProgr
 async function attemptOnce({ firstName, lastName, say }) {
   const password = randPass();
 
-  say('📧 بعمل إيميل مؤقت...');
-  const { address: email, token } = await newTempEmail();
+  say('📧 بجيب هوتميل جديد من الملف...');
+  const hm = nextHotmailAccount();
+  const email = hm.email;
+  const yoPassword = randPass(); // password for the new Global YO account
   say(`📧 الإيميل: ${email}`);
 
   say('🌐 بفتح المتصفح...');
@@ -265,10 +319,10 @@ async function attemptOnce({ firstName, lastName, say }) {
     await tryFill(['first_name'], firstName);
     await tryFill(['last_name'], lastName);
     await tryFill(['email'], email);
-    await tryFill(['password'], password);
+    await tryFill(['password'], yoPassword);
     for (const n of ['password_confirmation', 'passwordConfirmation']) {
       const loc = page.locator(`input[name="${n}"]`);
-      if (await loc.count()) { await loc.first().fill(password); break; }
+      if (await loc.count()) { await loc.first().fill(yoPassword); break; }
     }
     await killPopups();
     await page.locator('form button[type="submit"]').last().click();
@@ -282,17 +336,14 @@ async function attemptOnce({ firstName, lastName, say }) {
       const txt = await page.evaluate(() => document.body.innerText.replace(/\s+/g, ' ').slice(0, 300));
       throw new Error(`التسجيل مكتملش. آخر طلب API: ${lastApi}. الصفحة بتقول: ` + txt);
     }
-    const msg = await waitForInboxEmail(token, 150000, (s) => { if (s % 30 === 0) say(`✉️ مستني إيميل التفعيل... (${s}s)`); });
-    say(`✉️ وصل الإيميل: ${msg.subject}`);
-    const full = await mtm(`/messages/${msg.id}`, { headers: { Authorization: `Bearer ${token}` } });
-    const html = full.html || full.text || '';
-    const link = (html.match(/https?:\/\/[^\s"'<>]*verif[^\s"'<>]*/i) || html.match(/https?:\/\/[^\s"'<>]*token[^\s"'<>]*/i) || [])[0];
-    if (!link) throw new Error('no verification link found in email');
+    const vmail = await waitForHotmailVerify(hm, 180000, (s) => { if (s % 30 === 0) say(`✉️ مستني إيميل التفعيل... (${s}s)`); });
+    say(`✉️ وصل الإيميل: ${vmail.subject}`);
     say('🔗 بفتح لينك التفعيل...');
-    await page.goto(link, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    await page.goto(vmail.link, { waitUntil: 'domcontentloaded', timeout: 60000 });
     await page.waitForTimeout(4000);
 
-    const out = { email, password, firstName, lastName, createdAt: new Date().toISOString() };
+    markHotmailUsed(email);
+    const out = { email, password: yoPassword, hotmailPassword: hm.password, firstName, lastName, createdAt: new Date().toISOString() };
     const fname = `account-${Date.now()}.json`;
     fs.writeFileSync(path.join(__dirname, fname), JSON.stringify(out, null, 2));
     say('✅ الحساب اتعمل واتفعل!');

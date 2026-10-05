@@ -12,6 +12,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "imapflow": "^2.2.5",
     "playwright": "^1.63.0"
   }
 }
