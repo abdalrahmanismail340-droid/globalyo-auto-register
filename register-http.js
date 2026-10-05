@@ -53,7 +53,7 @@ async function graphToken(acc) {
   if (!j.access_token) throw new Error('graph token failed');
   return j.access_token;
 }
-async function waitForOTP(acc, timeoutMs = 180000, onTick) {
+async function waitForOTP(acc, sinceTime, timeoutMs = 180000, onTick) {
   const at = await graphToken(acc);
   const t0 = Date.now();
   while (Date.now() - t0 < timeoutMs) {
@@ -61,13 +61,12 @@ async function waitForOTP(acc, timeoutMs = 180000, onTick) {
       { headers: { Authorization: `Bearer ${at}` } });
     const j = await r.json().catch(() => ({}));
     for (const m of j.value || []) {
-      // Only look at emails from the last 5 minutes
-      const age = Date.now() - new Date(m.receivedDateTime).getTime();
-      if (age > 5 * 60 * 1000) continue;
+      // Only emails received AFTER we requested the OTP
+      const recvTime = new Date(m.receivedDateTime).getTime();
+      if (recvTime < sinceTime) continue;
       const subj = (m.subject || '').toLowerCase();
       const body = (m.body || {}).content || '';
       if (/global|yomobile|otp|verif|code/.test(subj)) {
-        // Extract 4-6 digit OTP
         const otpM = body.match(/\b(\d{4,6})\b/);
         if (otpM) return { otp: otpM[1], subject: m.subject };
       }
@@ -103,9 +102,10 @@ async function registerAccount({ firstName = 'Abood', lastName = 'Test', onProgr
   if (reg.status === 403) throw new Error('الـ API اتصد (403) — الـ IP متعلم عليه');
   if (reg.status !== 200 && reg.status !== 201) throw new Error(`فشل طلب الكود: ${reg.status}`);
 
-  // Step 2: Wait for OTP email
+  // Step 2: Wait for OTP email (only emails after our request)
   say('✉️ مستني إيميل الكود...');
-  const { otp, subject } = await waitForOTP(acc, 180000, (s) => { if (s % 30 === 0) say(`✉️ مستني... (${s}s)`); });
+  const reqTime = Date.now();
+  const { otp, subject } = await waitForOTP(acc, reqTime, 180000, (s) => { if (s % 30 === 0) say(`✉️ مستني... (${s}s)`); });
   say(`🔢 الكود وصل: ${otp}`);
 
   // Step 3: Verify OTP
