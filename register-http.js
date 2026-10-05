@@ -99,9 +99,14 @@ async function registerAccount({ firstName = 'Abood', lastName = 'Test', onProgr
   markUsed(email); // mark immediately so each run uses a fresh email
   say(`📧 الإيميل: ${email}`);
 
+  const deviceId = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0;
+    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+  });
+
   // Step 1: Request OTP
   say('📤 بطلب كود التفعيل...');
-  const reg = await apiCall('/identity/email-otp-registration/', { email, first_name: firstName, last_name: lastName }, say);
+  const reg = await apiCall('/identity/email-otp-registration/', { email, first_name: firstName, last_name: lastName, device_id: deviceId }, say);
   if (reg.status === 403) throw new Error('الـ API اتصد (403) — الـ IP متعلم عليه');
   if (reg.status !== 200 && reg.status !== 201) throw new Error(`فشل طلب الكود: ${reg.status}`);
 
@@ -113,10 +118,6 @@ async function registerAccount({ firstName = 'Abood', lastName = 'Test', onProgr
 
   // Step 3: Verify OTP
   say('✅ بتحقق من الكود...');
-  const deviceId = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
-    const r = Math.random() * 16 | 0;
-    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
-  });
   const ver = await apiCall('/identity/email-otp-verification/', { email, otp, device_id: deviceId }, say);
   if (ver.status !== 200 && ver.status !== 201) throw new Error(`فشل التحقق: ${ver.status}`);
 
