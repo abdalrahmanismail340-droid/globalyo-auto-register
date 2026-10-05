@@ -110,7 +110,11 @@ async function registerAccount({ firstName = 'Abood', lastName = 'Test', onProgr
 
   // Step 3: Verify OTP
   say('✅ بتحقق من الكود...');
-  const ver = await apiCall('/identity/email-otp-verification/', { email, otp }, say);
+  const deviceId = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0;
+    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+  });
+  const ver = await apiCall('/identity/email-otp-verification/', { email, otp, device_id: deviceId }, say);
   if (ver.status !== 200 && ver.status !== 201) throw new Error(`فشل التحقق: ${ver.status}`);
 
   markUsed(email);
