@@ -257,7 +257,23 @@ async function attemptOnce({ firstName, lastName, say }) {
     launchOpts.args.push('--disable-web-security', '--disable-features=IsolateOrigins,site-per-process');
     ctxOpts.ignoreHTTPSErrors = true;
   }
-  const browser = await chromium.launch(launchOpts);
+  // For pkg exe builds: try Playwright Chromium, fall back to system Chrome.
+  // For Termux (Android): use the system chromium package.
+  let browser;
+  const termuxChromium = '/data/data/com.termux/files/usr/bin/chromium';
+  try {
+    if (process.env.TERMUX_VERSION && fs.existsSync(termuxChromium)) {
+      say('📱 Termux: بستخدم chromium بتاع الجهاز...');
+      browser = await chromium.launch({ ...launchOpts, executablePath: termuxChromium });
+    } else {
+      browser = await chromium.launch(launchOpts);
+    }
+  } catch (e) {
+    if (/executable doesn't exist|failed to launch/i.test(e.message)) {
+      say('🔍 بدور على Chrome المثبت في الجهاز...');
+      browser = await chromium.launch({ ...launchOpts, channel: 'chrome' });
+    } else throw e;
+  }
   const ctx = await browser.newContext(ctxOpts);
   const page = await ctx.newPage();
   let lastApi = 'لم يتم أي طلب API';

@@ -20,7 +20,19 @@ const path = require('path');
 const { registerAccount } = require('./lib');
 
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-if (!TOKEN) { console.error('TELEGRAM_BOT_TOKEN is required'); process.exit(1); }
+if (!TOKEN) {
+  console.error('\n❌ TELEGRAM_BOT_TOKEN is required!');
+  console.error('حط التوكن كده قبل التشغيل:');
+  console.error('  set TELEGRAM_BOT_TOKEN=التوكن_بتاعك');
+  console.error('أو عدّل ملف start.bat وحط التوكن فيه وشغله.\n');
+  // Keep the window open so the user can read the error (pkg exe)
+  if (process.pkg) {
+    console.error('دوس أي زرار عشان تقفل...');
+    process.stdin.setRawMode(true);
+    process.stdin.resume();
+    process.stdin.on('data', () => process.exit(1));
+  } else process.exit(1);
+}
 const ALLOWED = (process.env.ALLOWED_USER_ID || '').split(',').map(s => s.trim()).filter(Boolean);
 const API = `https://api.telegram.org/bot${TOKEN}`;
 
