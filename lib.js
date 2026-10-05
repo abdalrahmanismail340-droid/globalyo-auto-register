@@ -101,6 +101,20 @@ async function attemptOnce({ firstName, lastName, say }) {
   const ctxOpts = {
     userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
   };
+  // Optional residential proxy: PROXY_URL=http://user:pass@host:port
+  // Routes all browser traffic through it (bypasses datacenter IP blocks).
+  const PROXY_URL = process.env.PROXY_URL || '';
+  if (PROXY_URL && !SANDBOX) {
+    try {
+      const pu = new URL(PROXY_URL);
+      launchOpts.proxy = {
+        server: `${pu.protocol}//${pu.host}`,
+        username: pu.username ? decodeURIComponent(pu.username) : undefined,
+        password: pu.password ? decodeURIComponent(pu.password) : undefined,
+      };
+      say('🔀 البروكسي متفعل — كل الترافيك هيعدي من خلاله');
+    } catch { say('⚠️ PROXY_URL مش سليم — هكمل من غير بروكسي'); }
+  }
   if (SANDBOX) {
     const probe = await new Promise(resolve => {
       const s = require('net').connect(8899, '127.0.0.1');
