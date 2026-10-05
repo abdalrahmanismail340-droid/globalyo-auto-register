@@ -69,8 +69,18 @@ async function waitForOTP(acc, sinceTime, timeoutMs = 180000, onTick) {
       const subj = (m.subject || '').toLowerCase();
       const body = (m.body || {}).content || '';
       if (/global|yomobile|otp|verif|code/.test(subj)) {
-        const otpM = body.match(/\b(\d{4,6})\b/);
-        if (otpM) return { otp: otpM[1], subject: m.subject };
+        // Strip HTML and find OTP near keywords
+        let text = body.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ');
+        // Look for 4-6 digits near "code"/"OTP"/"verification"
+        let otpM = text.match(/(?:code|otp|verification)[^0-9]{0,30}(\d{4,6})/i)
+          || text.match(/(\d{4,6})[^0-9]{0,30}(?:code|otp|verification)/i)
+          || text.match(/\b(\d{4,6})\b/);
+        if (otpM) {
+          const otp = otpM[1];
+          say(`📧 الإيميل: ${m.subject}`);
+          say(`🔍 النص: ...${text.slice(Math.max(0, text.indexOf(otp)-40), text.indexOf(otp)+50)}...`);
+          return { otp, subject: m.subject };
+        }
       }
     }
     if (onTick) onTick(Math.round((Date.now() - t0) / 1000));
