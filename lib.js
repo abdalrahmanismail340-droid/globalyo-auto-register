@@ -34,23 +34,12 @@ const USED_FILE = path.join(__dirname, '.used_hotmails.json');
 
 function loadHotmailAccounts() {
   let accounts = [];
-  // 1) Env var (easiest for Railway): HOTMAIL_ACCOUNTS="email:pass\nemail2:pass2" or JSON
-  const envAcc = process.env.HOTMAIL_ACCOUNTS || '';
-  if (envAcc.trim()) {
-    const t = envAcc.trim();
-    if (t.startsWith('[')) {
-      try { accounts = JSON.parse(t); } catch {}
-    } else {
-      accounts = parseHotmailLines(t);
-    }
+  // From hotmail_accounts.txt (uploaded via Telegram /sethotmails) or .json
+  if (fs.existsSync(HOTMAIL_TXT)) {
+    accounts = parseHotmailLines(fs.readFileSync(HOTMAIL_TXT, 'utf8'));
   }
-  // 2) JSON file
   if (!accounts.length && fs.existsSync(HOTMAIL_FILE)) {
     try { accounts = JSON.parse(fs.readFileSync(HOTMAIL_FILE, 'utf8')); } catch {}
-  }
-  // 3) TXT file
-  if (!accounts.length && fs.existsSync(HOTMAIL_TXT)) {
-    accounts = parseHotmailLines(fs.readFileSync(HOTMAIL_TXT, 'utf8'));
   }
   return accounts.filter(a => a.email && a.password);
 }
@@ -436,4 +425,4 @@ async function attemptOnce({ firstName, lastName, say }) {
   }
 }
 
-module.exports = { registerAccount };
+module.exports = { registerAccount, loadHotmailAccounts };

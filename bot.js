@@ -15,6 +15,8 @@
  *   /status                - show state
  *   /help                  - help
  */
+const fs = require('fs');
+const path = require('path');
 const { registerAccount } = require('./lib');
 
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
@@ -36,10 +38,28 @@ const send = (chatId, text) => tg('sendMessage', { chat_id: chatId, text, parse_
 
 const help = `🤖 <b>Global YO Register Bot</b>
 /register [first] [last] — تسجيل حساب جديد دلوقتي
+/sethotmails — ابعت ملف الـ txt بتاع الهوتميلات
 /auto &lt;hours&gt; — تسجيل تلقائي كل N ساعة (مثال: /auto 6)
 /auto off — إيقاف الوضع التلقائي
 /status — الحالة
 /help — المساعدة`;
+
+const waitingForHotmails = new Set(); // chatIds expecting a txt file
+
+// Download a Telegram file and save it locally
+async function downloadTgFile(fileId, destPath) {
+  const info = await tg('getFile', { file_id: fileId });
+  const url = `https://api.telegram.org/file/bot${TOKEN}/${info.file_path}`;
+  const r = await fetch(url);
+  if (!r.ok) throw new Error('download failed: ' + r.status);
+  const buf = Buffer.from(await r.arrayBuffer());
+  fs.writeFileSync(destPath, buf);
+  return buf;
+}
+
+function countHotmailsIn(buf) {
+  return buf.toString('utf8').split('\n').filter(l => l.trim() && l.includes('@')).length;
+}
 
 function isAllowed(userId) {
   return ALLOWED.length === 0 || ALLOWED.includes(String(userId));
@@ -84,9 +104,41 @@ function setAuto(chatId, hours) {
 
 async function handleUpdate(u) {
   const msg = u.message;
-  if (!msg || !msg.text) return;
+  if (!msg) return;
   const chatId = msg.chat.id;
   const userId = msg.from.id;
+
+  if (!isAllowed(userId)) {
+    if (msg.text && msg.text.trim() === '/start') {
+      await send(chatId, `👋 أهلًا! البوت ده خاص.\nالـ Chat ID بتاعك: <code>${userId}</code>\nابعته لصاحب البوت عشان يضيفك في ALLOWED_USER_ID.`);
+    }
+    return;
+  }
+
+  // --- File upload: hotmail accounts txt ---
+  if (msg.document) {
+    const doc = msg.document;
+    const name = (doc.file_name || '').toLowerCase();
+    if (waitingForHotmails.has(chatId) || name.endsWith('.txt')) {
+      try {
+        await send(chatId, '📥 بستلم ملف الهوتميلات...');
+        const dest = path.join(__dirname, 'hotmail_accounts.txt');
+        const buf = await downloadTgFile(doc.file_id, dest);
+        // reset used-tracking so the new list starts fresh
+        try { fs.unlinkSync(path.join(__dirname, '.used_hotmails.json')); } catch {}
+        waitingForHotmails.delete(chatId);
+        const n = countHotmailsIn(buf);
+        await send(chatId, `✅ اتحفظ! لقيت <b>${n}</b> هوتميل في الملف.\nجرب <b>/register</b> دلوقتي`);
+      } catch (e) {
+        await send(chatId, `❌ فشل استلام الملف: ${e.message}`);
+      }
+    } else {
+      await send(chatId, 'ابعت ملف txt بالهوتميلات، أو استخدم /sethotmails الأول');
+    }
+    return;
+  }
+
+  if (!msg.text) return;
   const text = msg.text.trim();
   const [cmd, ...args] = text.split(/\s+/);
 
@@ -105,9 +157,21 @@ async function handleUpdate(u) {
     case '/register': {
       const first = args[0] || 'Abood';
       const last = args[1] || 'Test';
+      // quick check: are there any hotmail accounts?
+      try {
+        const { loadHotmailAccounts } = require('./lib');
+        if (!loadHotmailAccounts().length) {
+          await send(chatId, '📭 مفيش هوتميلات متسجلة!\nابعت أمر <b>/sethotmails</b> وبعدين ابعت ملف الـ txt');
+          break;
+        }
+      } catch {}
       doRegister(chatId, first, last); // async, don't await
       break;
     }
+    case '/sethotmails':
+      waitingForHotmails.add(chatId);
+      await send(chatId, '📎 ابعت ملف الـ <b>txt</b> بتاع الهوتميلات دلوقتي (كل سطر: email|password|token|client_id)');
+      break;
     case '/auto': {
       if (args[0] === 'off') setAuto(chatId, 0);
       else {
