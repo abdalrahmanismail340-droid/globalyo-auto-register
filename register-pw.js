@@ -56,8 +56,30 @@ async function main() {
   });
   const t = await r.text();
   console.log(`← ${r.status}: ${t.slice(0, 500)}`);
-  if (r.ok) console.log('✅ REGISTERED WITH PASSWORD');
-  else console.log('❌ Failed');
+  if (!r.ok) { console.log('❌ Failed'); return; }
+  console.log('✅ REGISTERED WITH PASSWORD');
+
+  // Login to get access token
+  console.log('🔑 Logging in...');
+  const lr = await fetch(API + '/identity/login/', {
+    method: 'POST', headers: HEADERS,
+    body: JSON.stringify({ email, password, device_id: deviceId }),
+  });
+  const lt = await lr.text();
+  console.log(`← ${lr.status}`);
+  if (lr.ok) {
+    const lj = JSON.parse(lt);
+    const out = {
+      email, password,
+      accessToken: lj.access_token || lj.access || lj.token,
+      refreshToken: lj.refresh_token || lj.refresh,
+      registeredAt: new Date().toISOString(),
+      via: 'password-registration',
+    };
+    const fname = `account-${Date.now()}.json`;
+    fs.writeFileSync(path.join(__dirname, fname), JSON.stringify(out, null, 2));
+    console.log(`💾 Saved to ${fname}`);
+  }
 }
 
 main().catch(e => { console.error('❌', e.message); process.exit(1); });
