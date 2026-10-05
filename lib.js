@@ -34,17 +34,34 @@ const USED_FILE = path.join(__dirname, '.used_hotmails.json');
 
 function loadHotmailAccounts() {
   let accounts = [];
-  if (fs.existsSync(HOTMAIL_FILE)) {
+  // 1) Env var (easiest for Railway): HOTMAIL_ACCOUNTS="email:pass\nemail2:pass2" or JSON
+  const envAcc = process.env.HOTMAIL_ACCOUNTS || '';
+  if (envAcc.trim()) {
+    const t = envAcc.trim();
+    if (t.startsWith('[')) {
+      try { accounts = JSON.parse(t); } catch {}
+    } else {
+      accounts = parseHotmailLines(t);
+    }
+  }
+  // 2) JSON file
+  if (!accounts.length && fs.existsSync(HOTMAIL_FILE)) {
     try { accounts = JSON.parse(fs.readFileSync(HOTMAIL_FILE, 'utf8')); } catch {}
-  } else if (fs.existsSync(HOTMAIL_TXT)) {
-    accounts = fs.readFileSync(HOTMAIL_TXT, 'utf8').split('\n')
-      .map(l => l.trim()).filter(l => l && !l.startsWith('#'))
-      .map(l => {
-        const m = l.match(/^([^:|;\s]+)\s*[:|;]\s*(\S+)(?:\s*[:|;]\s*(\S+))?/);
-        return m ? { email: m[1].trim(), password: m[2].trim(), extra: m[3] || '' } : null;
-      }).filter(Boolean);
+  }
+  // 3) TXT file
+  if (!accounts.length && fs.existsSync(HOTMAIL_TXT)) {
+    accounts = parseHotmailLines(fs.readFileSync(HOTMAIL_TXT, 'utf8'));
   }
   return accounts.filter(a => a.email && a.password);
+}
+
+function parseHotmailLines(text) {
+  return text.split('\n')
+    .map(l => l.trim()).filter(l => l && !l.startsWith('#'))
+    .map(l => {
+      const m = l.match(/^([^:|;\s]+)\s*[:|;]\s*(\S+)(?:\s*[:|;]\s*(\S+))?/);
+      return m ? { email: m[1].trim(), password: m[2].trim(), extra: m[3] || '' } : null;
+    }).filter(Boolean);
 }
 
 function getUsedSet() {
