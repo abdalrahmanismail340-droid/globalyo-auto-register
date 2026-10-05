@@ -53,17 +53,15 @@ async function tg(method, body = {}) {
 }
 const send = (chatId, text) => tg('sendMessage', { chat_id: chatId, text, parse_mode: 'HTML', disable_web_page_preview: true }).catch(e => console.error('send failed:', e.message));
 
-const help = `🤖 <b>Global YO Register Bot</b>
-/register [first] [last] [password] — تسجيل حساب جديد (مثال: /register Abood Test Aabdo123#)
-/setpassword &lt;email&gt; &lt;pass&gt; — تعيين باسورد لحساب موجود
-/sethotmails — ابعت ملف الـ txt بتاع الهوتميلات
-/countries — قايمة الدول المتاحة
-/plans &lt;id&gt; — باقات دولة معينة
+const help = `🤖 <b>Global YO Bot</b>
+/register [first] [last] — تسجيل حساب جديد
+/sethotmails — ابعت ملف الهوتميلات
+/countries — قايمة الدول
+/plans &lt;id&gt; — باقات دولة
 /regions — المناطق (Global, Europe, ...)
-/rplans &lt;id&gt; — باقات منطقة (هات الـ id من /regions)
-/buy &lt;product_id&gt; [كود_خصم] — شراء باقة بالفيزا
-/auto &lt;hours&gt; — تسجيل تلقائي كل N ساعة (مثال: /auto 6)
-/auto off — إيقاف الوضع التلقائي
+/rplans &lt;id&gt; — باقات منطقة
+/auto &lt;hours&gt; — تسجيل تلقائي كل N ساعة
+/auto off — إيقاف التلقائي
 /status — الحالة
 /help — المساعدة`;
 
@@ -294,61 +292,6 @@ async function handleUpdate(u) {
           chunk += line;
         }
         await send(chatId, chunk);
-      } catch (e) { await send(chatId, `❌ ${e.message}`); }
-      break;
-    }
-    case '/buy': {
-      const pid = args[0];
-      const promo = args[1] || null;
-      if (!pid) {
-        await send(chatId, 'استخدم: <code>/buy [product_id] [كود_خصم]</code>\nهات الـ product_id من /plans أو /rplans\nمثال: <code>/buy abc123</code>\nمثال بكود: <code>/buy abc123 SAVE10</code>');
-        break;
-      }
-      try {
-        const { loadToken } = require('./plans');
-        const { token } = loadToken();
-        const H = { 'Authorization': `Bearer ${token}`, 'X-PLATFORM': 'android', 'User-Agent': 'GlobalYO/4.1.5 (Android)', 'Content-Type': 'application/json' };
-        
-        // Validate promo if given (non-blocking - endpoint may not exist)
-        if (promo) {
-          try {
-            const pr = await fetch(GYO_API + `/v1.0/esim/promo-codes/${promo}/validate/`, { headers: H });
-            if (pr.ok) await send(chatId, `✅ الكود شغال!`);
-          } catch (e) {}
-        }
-
-        await send(chatId, `💳 بعمل الأوردر...`);
-        const body = {
-          product_id: pid,
-          payment_method: 'card',
-          yo_calls_enabled: false,
-          ...(promo && { promo_code: promo }),
-        };
-        const r = await fetch(GYO_API + '/v1.0/esim/orders/', {
-          method: 'POST', headers: H, body: JSON.stringify(body),
-        });
-        const t = await r.text();
-        if (!r.ok) {
-          await send(chatId, `❌ فشل الأوردر (${r.status}):\n<code>${t.slice(0, 500)}</code>`);
-          break;
-        }
-        const j = JSON.parse(t);
-        await send(chatId, `✅ <b>الأوردر اتعمل!</b>\n\nID: <code>${j.id || j.order_id || '?'}</code>\n\n${t.slice(0, 800)}`);
-      } catch (e) { await send(chatId, `❌ ${e.message}`); }
-      break;
-    }
-    case '/setpassword': {
-      const em = args[0];
-      const np = args[1];
-      if (!em || !em.includes('@') || !np || np.length < 6) {
-        await send(chatId, 'استخدم: /setpassword &lt;email&gt; &lt;باسورد 6+&gt;\nمثال: /setpassword test@hotmail.com Aabdo123#');
-        break;
-      }
-      try {
-        const { setPassword } = require('./set-password');
-        await send(chatId, `🔑 بعين باسورد لـ <code>${em}</code>...`);
-        await setPassword(em, np, (m) => send(chatId, m));
-        await send(chatId, `✅ الباسورد اتعين!\n📧 <code>${em}</code>\n🔑 <code>${np}</code>\nتقدر تدخل من التطبيق دلوقتي`);
       } catch (e) { await send(chatId, `❌ ${e.message}`); }
       break;
     }
