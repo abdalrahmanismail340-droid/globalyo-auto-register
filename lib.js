@@ -120,6 +120,7 @@ async function attemptOnce({ firstName, lastName, say }) {
   const browser = await chromium.launch(launchOpts);
   const ctx = await browser.newContext(ctxOpts);
   const page = await ctx.newPage();
+  let lastApi = 'لم يتم أي طلب API';
   // Smart routing for the identity API: try direct first; if Cloudflare challenges
   // the XHR (403 + challenge page), retry the same request through the site's own
   // same-origin Next.js proxy (/api/storefront/public-proxy + original path).
@@ -128,6 +129,7 @@ async function attemptOnce({ firstName, lastName, say }) {
     const u = new URL(req.url());
     const viaProxy = 'https://www.globalyo.com/api/storefront/public-proxy' + u.pathname + u.search;
     const useProxy = async (why) => {
+      lastApi = `${req.method()} ${u.pathname} ← تحويل للبروكسي (${why})`;
       say(`🛡️ ${why} — بحول على سيرفر الموقع...`);
       return route.continue({ url: viaProxy });
     };
@@ -136,12 +138,13 @@ async function attemptOnce({ firstName, lastName, say }) {
       const resp = await route.fetch({ timeout: 25000 });
       const body = await resp.text().catch(() => '');
       const snippet = body.replace(/\s+/g, ' ').slice(0, 200);
+      lastApi = `${req.method()} ${u.pathname} ← ${resp.status()}`;
       say(`🌐 API ${req.method()} ${u.pathname} ← ${resp.status()}`);
-      if (resp.status >= 400) say(`📄 الرد: ${snippet || '(فارغ)'}`);
+      if (resp.status() >= 400) say(`📄 الرد: ${snippet || '(فارغ)'}`);
       // Any 403/429/503 on the identity API from a datacenter IP is treated as
       // a network-level block -> retry the same request via the site's own proxy.
-      if ([403, 429, 503].includes(resp.status)) {
-        return useProxy(`الـ API رد ${resp.status}`);
+      if ([403, 429, 503].includes(resp.status())) {
+        return useProxy(`الـ API رد ${resp.status()}`);
       }
       return route.fulfill({ response: resp });
     } catch (e) {
@@ -252,7 +255,7 @@ async function attemptOnce({ firstName, lastName, say }) {
     ).then(() => true).catch(() => false);
     if (!verifyShown) {
       const txt = await page.evaluate(() => document.body.innerText.replace(/\s+/g, ' ').slice(0, 300));
-      throw new Error('التسجيل مكتملش. الصفحة بتقول: ' + txt);
+      throw new Error(`التسجيل مكتملش. آخر طلب API: ${lastApi}. الصفحة بتقول: ` + txt);
     }
     const msg = await waitForInboxEmail(token, 150000, (s) => { if (s % 30 === 0) say(`✉️ مستني إيميل التفعيل... (${s}s)`); });
     say(`✉️ وصل الإيميل: ${msg.subject}`);
