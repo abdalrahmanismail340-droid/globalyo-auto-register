@@ -91,7 +91,7 @@ async function apiCall(path, body, say) {
   return { status: r.status, body: j };
 }
 
-async function registerAccount({ onProgress = () => {} } = {}) {
+async function registerAccount({ firstName = 'Abood', lastName = 'Test', onProgress = () => {} } = {}) {
   const say = (m) => { try { onProgress(m); } catch {} };
   const acc = nextAccount();
   const email = acc.email;
@@ -99,7 +99,7 @@ async function registerAccount({ onProgress = () => {} } = {}) {
 
   // Step 1: Request OTP
   say('📤 بطلب كود التفعيل...');
-  const reg = await apiCall('/identity/email-otp-registration/', { email }, say);
+  const reg = await apiCall('/identity/email-otp-registration/', { email, first_name: firstName, last_name: lastName }, say);
   if (reg.status === 403) throw new Error('الـ API اتصد (403) — الـ IP متعلم عليه');
   if (reg.status !== 200 && reg.status !== 201) throw new Error(`فشل طلب الكود: ${reg.status}`);
 
