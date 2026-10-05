@@ -47,7 +47,7 @@ async function getCountries(token) {
 
 async function getPlans(token, countryId) {
   const j = await apiGet(`/v5.0/esim/countries/${countryId}/products/`, token);
-  return j.results || j.products || j.plans || j.data || j;
+  return Array.isArray(j) ? j : (j.results || j.products || j.plans || j.data || j);
 }
 
 async function getRegions(token) {
