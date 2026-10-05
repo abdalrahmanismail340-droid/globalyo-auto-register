@@ -23,8 +23,14 @@ function loadToken() {
     .sort((a, b) => b.t - a.t);
   if (!files.length) throw new Error('مفيش حساب مسجل — اعمل /register الأول');
   const j = JSON.parse(fs.readFileSync(path.join(__dirname, files[0].f), 'utf8'));
-  if (!j.accessToken) throw new Error('مفيش توكن في ملف الحساب');
-  return { token: j.accessToken, email: j.email };
+  // accessToken saved directly, or extract from apiResponse (older files)
+  let tok = j.accessToken || j.refreshToken && null;
+  if (!tok && j.apiResponse) {
+    const b = j.apiResponse;
+    tok = b.access_token || b.access || b.token || (b.data && (b.data.access_token || b.data.token)) || null;
+  }
+  if (!tok) throw new Error('مفيش توكن في ملف الحساب — سجل حساب جديد بـ /register');
+  return { token: tok, email: j.email };
 }
 
 async function apiGet(p, token) {
