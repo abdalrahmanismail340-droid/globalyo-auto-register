@@ -308,16 +308,12 @@ async function handleUpdate(u) {
         const { token } = loadToken();
         const H = { 'Authorization': `Bearer ${token}`, 'X-PLATFORM': 'android', 'User-Agent': 'GlobalYO/4.1.5 (Android)', 'Content-Type': 'application/json' };
         
-        // Validate promo if given
+        // Validate promo if given (non-blocking - endpoint may not exist)
         if (promo) {
-          await send(chatId, `🎟️ بتحقق من كود <code>${promo}</code>...`);
-          const pr = await fetch(API + `/v1.0/esim/promo-codes/${promo}/validate/`, { headers: H });
-          const pt = await pr.text();
-          if (!pr.ok) {
-            await send(chatId, `❌ الكود مش شغال: ${pt.slice(0, 200)}`);
-            break;
-          }
-          await send(chatId, `✅ الكود شغال!`);
+          try {
+            const pr = await fetch(API + `/v1.0/esim/promo-codes/${promo}/validate/`, { headers: H });
+            if (pr.ok) await send(chatId, `✅ الكود شغال!`);
+          } catch (e) {}
         }
 
         await send(chatId, `💳 بعمل الأوردر...`);
