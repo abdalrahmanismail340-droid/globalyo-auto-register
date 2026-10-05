@@ -82,37 +82,42 @@ async function setPassword(email, newPass, onProgress = () => {}) {
   const acc = findHotmail(email);
   if (!acc) throw new Error('Hotmail account not found in hotmail_accounts.txt');
 
-  // Step 1: Request password reset
-  say('📤 Requesting password reset...');
-  const r1 = await fetch(API + '/identity/password-reset/', {
-    method: 'POST', headers: HEADERS, body: JSON.stringify({ email }),
+  const deviceId = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0;
+    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
   });
-  const t1 = await r1.text();
-  say(`← ${r1.status}`);
-  if (!r1.ok) throw new Error('password-reset failed: ' + r1.status + ' ' + t1.slice(0, 150));
+
+  // Step 1: Request reset token (try password-reset-token first, then password-reset)
+  say('📤 بطلب توكن الاسترجاع...');
+  let reqOk = false;
+  for (const ep of ['/identity/password-reset-token/', '/identity/password-reset/']) {
+    const r = await fetch(API + ep, {
+      method: 'POST', headers: HEADERS, body: JSON.stringify({ email, device_id: deviceId }),
+    });
+    const t = await r.text();
+    say(`← ${ep} ${r.status}`);
+    if (r.ok) { reqOk = true; break; }
+  }
+  if (!reqOk) throw new Error('فشل طلب توكن الاسترجاع');
 
   // Step 2: Read reset email
-  say('✉️ Waiting for reset email...');
+  say('✉️ مستني إيميل الاسترجاع...');
   const since = Date.now();
-  const { link, token, fullText } = await waitForResetEmail(acc, since, 180000, say);
+  const { link, token } = await waitForResetEmail(acc, since, 180000, say);
+  const resetToken = token || (link && (link.match(/(?:token|code)=([^&]+)/) || [])[1]);
+  if (!resetToken) throw new Error('ملقتش توكن الاسترجاع في الإيميل');
+  say(`🔑 التوكن وصل`);
 
-  // Step 3: Submit new password (try common field combinations)
-  const attempts = [];
-  if (token) attempts.push({ token, password: newPass }, { token, new_password: newPass });
-  if (link) {
-    const tm = link.match(/(?:token|code)=([^&]+)/);
-    if (tm) attempts.push({ token: tm[1], password: newPass }, { token: tm[1], new_password: newPass });
-  }
-  for (const body of attempts) {
-    say('🔑 Trying password-reset-token...');
-    const r2 = await fetch(API + '/identity/password-reset-token/', {
-      method: 'POST', headers: HEADERS, body: JSON.stringify(body),
-    });
-    const t2 = await r2.text();
-    say(`← ${r2.status}`);
-    if (r2.ok) return true;
-  }
-  throw new Error('All password-reset-token attempts failed');
+  // Step 3: Submit new password
+  say('🔑 بعين الباسورد الجديد...');
+  const r2 = await fetch(API + '/identity/password-reset/', {
+    method: 'POST', headers: HEADERS,
+    body: JSON.stringify({ device_id: deviceId, reset_token: resetToken, password: newPass }),
+  });
+  const t2 = await r2.text();
+  say(`← ${r2.status}`);
+  if (!r2.ok) throw new Error('فشل تعيين الباسورد: ' + r2.status + ' ' + t2.slice(0, 150));
+  return true;
 }
 
 module.exports = { setPassword };
