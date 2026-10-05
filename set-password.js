@@ -119,17 +119,25 @@ async function setPassword(email, newPass, onProgress = () => {}) {
   const { link, token, allLinks } = await waitForResetEmail(acc, since, 180000, say);
   // Extract reset_token from link query params or path
   // Links may be double-URL-encoded (AWS tracking wrapper) — decode first
+  // Tracking links (awstrack.me) redirect — follow to get the real URL with full token
   let resetToken = token;
   const linksToTry = [...(allLinks || []), link].filter(Boolean);
   for (let l of linksToTry) {
-    if (resetToken) break;
+    if (resetToken && resetToken.length > 20) break;
+    // Follow redirects to get final URL (tracking wrappers truncate the token)
+    let finalUrl = l;
+    try {
+      say('🔄 بتبع التحويل...');
+      const rr = await fetch(l, { method: 'HEAD', redirect: 'follow' });
+      if (rr.url && rr.url !== l) { finalUrl = rr.url; say('🔗 الرابط النهائي وصل'); }
+    } catch {}
     // Decode repeatedly (tracking wrappers double-encode)
-    let dec = l;
+    let dec = finalUrl;
     for (let i = 0; i < 3; i++) {
       try { const d2 = decodeURIComponent(dec); if (d2 === dec) break; dec = d2; } catch { break; }
     }
     const qm = dec.match(/[?&](token|reset_token|code|key)=([^&]+)/i);
-    if (qm) { resetToken = qm[2]; break; }
+    if (qm && qm[2].length > 20) { resetToken = qm[2]; break; }
     const pm = dec.match(/\/([a-f0-9\-]{20,})\/?(?:\?|$)/i);
     if (pm) { resetToken = pm[1]; break; }
   }
