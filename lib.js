@@ -59,6 +59,15 @@ function parseHotmailLines(text) {
   return text.split('\n')
     .map(l => l.trim()).filter(l => l && !l.startsWith('#'))
     .map(l => {
+      const parts = l.split('|');
+      if (parts.length >= 2) {
+        return {
+          email: parts[0].trim(),
+          password: parts[1].trim(),
+          refreshToken: (parts[2] || '').trim(),
+          clientId: (parts[3] || '').trim(),
+        };
+      }
       const m = l.match(/^([^:|;\s]+)\s*[:|;]\s*(\S+)(?:\s*[:|;]\s*(\S+))?/);
       return m ? { email: m[1].trim(), password: m[2].trim(), extra: m[3] || '' } : null;
     }).filter(Boolean);
@@ -84,8 +93,65 @@ function markHotmailUsed(email) {
   try { fs.writeFileSync(USED_FILE, JSON.stringify([...used], null, 1)); } catch {}
 }
 
+// Microsoft Graph API via OAuth refresh token (from the hotmail file's token fields).
+async function graphAccessToken(account) {
+  const params = new URLSearchParams({
+    client_id: account.clientId,
+    refresh_token: account.refreshToken,
+    grant_type: 'refresh_token',
+    scope: 'https://graph.microsoft.com/Mail.Read offline_access',
+  });
+  const r = await fetch('https://login.microsoftonline.com/common/oauth2/v2.0/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: params,
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || !j.access_token) throw new Error('graph token: ' + (j.error_description || j.error || r.status));
+  return j.access_token;
+}
+
+function extractVerifyLink(text) {
+  return (text.match(/https?:\/\/[^\s"'<>]*verif[^\s"'<>]*/i)
+    || text.match(/https?:\/\/[^\s"'<>]*token[^\s"'<>]*/i) || [])[0] || null;
+}
+
+async function waitForGraphVerify(account, timeoutMs = 180000, onTick) {
+  const accessToken = await graphAccessToken(account);
+  const t0 = Date.now();
+  while (Date.now() - t0 < timeoutMs) {
+    const r = await fetch(
+      'https://graph.microsoft.com/v1.0/me/messages?$top=10&$orderby=receivedDateTime%20desc&$select=subject,from,body',
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+    if (r.status === 401) throw new Error('graph token expired/invalid');
+    const j = await r.json().catch(() => ({}));
+    for (const m of j.value || []) {
+      const subj = (m.subject || '').toLowerCase();
+      const from = (((m.from || {}).emailAddress) || {}).address || '';
+      if (/global|yomobile|verify|verification/.test(subj + ' ' + from)) {
+        const body = (m.body || {}).content || '';
+        const link = extractVerifyLink(body);
+        if (link) return { subject: m.subject, link };
+      }
+    }
+    if (onTick) onTick(Math.round((Date.now() - t0) / 1000));
+    await new Promise(r2 => setTimeout(r2, 8000));
+  }
+  throw new Error('timed out waiting for verification email (Graph)');
+}
+
+// Wait for the Global YO verification email: try Graph API (token) first, fall back to IMAP.
+async function waitForHotmailVerify(account, timeoutMs = 180000, onTick) {
+  if (account.refreshToken && account.clientId) {
+    try { return await waitForGraphVerify(account, timeoutMs, onTick); }
+    catch (e) { onTick && onTick(0); /* fall through to IMAP */ }
+  }
+  return waitForImapVerify(account, timeoutMs, onTick);
+}
+
 // Wait for the Global YO verification email in a Hotmail inbox via IMAP.
-async function waitForHotmailVerify({ email, password }, timeoutMs = 180000, onTick) {
+async function waitForImapVerify({ email, password }, timeoutMs = 180000, onTick) {
   const client = new ImapFlow({
     host: 'outlook.office365.com', port: 993, secure: true,
     auth: { user: email, pass: password },
