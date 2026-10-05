@@ -57,7 +57,9 @@ const help = `🤖 <b>Global YO Register Bot</b>
 /setpassword &lt;email&gt; &lt;pass&gt; — تعيين باسورد لحساب موجود
 /sethotmails — ابعت ملف الـ txt بتاع الهوتميلات
 /countries — قايمة الدول المتاحة
-/plans &lt;id&gt; — باقات دولة معينة (هات الـ id من /countries)
+/plans &lt;id&gt; — باقات دولة معينة
+/regions — المناطق (Global, Europe, ...)
+/rplans &lt;id&gt; — باقات منطقة (هات الـ id من /regions)
 /auto &lt;hours&gt; — تسجيل تلقائي كل N ساعة (مثال: /auto 6)
 /auto off — إيقاف الوضع التلقائي
 /status — الحالة
@@ -245,6 +247,47 @@ async function handleUpdate(u) {
           const data = x.data || x.gb || x.data_allowance || x.data_included || '';
           const validity = x.validity || x.validity_days || x.duration || '';
           const line = `• <b>${name}</b> — ${price}${data ? ` | ${data}GB` : ''}${validity ? ` | ${validity} يوم` : ''}\n`;
+          if ((chunk + line).length > 3500) { await send(chatId, chunk); chunk = '📦 تكملة:\n\n'; }
+          chunk += line;
+        }
+        await send(chatId, chunk);
+      } catch (e) { await send(chatId, `❌ ${e.message}`); }
+      break;
+    }
+    case '/regions': {
+      try {
+        const { loadToken } = require('./plans');
+        const { token } = loadToken();
+        await send(chatId, '🌍 بجيب المناطق...');
+        const r = await fetch(API + '/v1.0/esim/regions/', { headers: { 'Authorization': `Bearer ${token}`, 'X-PLATFORM': 'android', 'User-Agent': 'GlobalYO/4.1.5 (Android)' } });
+        const j = await r.json();
+        const list = Array.isArray(j) ? j : (j.results || []);
+        let chunk = '🌍 <b>المناطق:</b>\n\n';
+        for (const x of list) {
+          const line = `${x.name} — <code>/rplans ${x.id}</code>\n`;
+          if ((chunk + line).length > 3500) { await send(chatId, chunk); chunk = ''; }
+          chunk += line;
+        }
+        await send(chatId, chunk);
+      } catch (e) { await send(chatId, `❌ ${e.message}`); }
+      break;
+    }
+    case '/rplans': {
+      const rid = args[0];
+      if (!rid) { await send(chatId, 'استخدم: /rplans &lt;id&gt; — هات الـ id من /regions'); break; }
+      try {
+        const { loadToken, getPlans } = require('./plans');
+        const { token } = loadToken();
+        await send(chatId, `📦 بجيب باقات المنطقة...`);
+        const r = await fetch(API + `/v5.0/esim/regions/${rid}/products/`, { headers: { 'Authorization': `Bearer ${token}`, 'X-PLATFORM': 'android', 'User-Agent': 'GlobalYO/4.1.5 (Android)' } });
+        const j = await r.json();
+        const list = Array.isArray(j) ? j : (j.results || j.products || []);
+        if (!list.length) { await send(chatId, 'مفيش باقات للمنطقة دي'); break; }
+        let chunk = `📦 <b>الباقات:</b>\n\n`;
+        for (const x of list) {
+          const name = x.name || x.title || 'باقة';
+          const price = x.price || (x.prices && x.prices[0] && x.prices[0].price) || '?';
+          const line = `• <b>${name}</b> — ${price}\n`;
           if ((chunk + line).length > 3500) { await send(chatId, chunk); chunk = '📦 تكملة:\n\n'; }
           chunk += line;
         }
