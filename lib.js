@@ -261,30 +261,10 @@ async function attemptOnce({ firstName, lastName, say }) {
   const ctx = await browser.newContext(ctxOpts);
   const page = await ctx.newPage();
   let lastApi = 'لم يتم أي طلب API';
-  // Smart routing for the identity API: try direct first; if Cloudflare challenges
-  // the XHR (403 + challenge page), retry the same request through the site's own
-  // same-origin Next.js proxy (/api/storefront/public-proxy + original path).
+  // Log identity API calls (direct only — no proxy fallback).
   await page.route('https://play.prod.yomobile.xyz/api/v1.0/identity/**', async (route) => {
     const req = route.request();
     const u = new URL(req.url());
-    const viaProxy = 'https://www.globalyo.com/api/storefront/public-proxy' + u.pathname + u.search;
-    const useProxy = async (why) => {
-      say(`🛡️ ${why} — بحول على سيرفر الموقع...`);
-      try {
-        const proxyResp = await route.fetch({ url: viaProxy, timeout: 30000 });
-        const proxyBody = await proxyResp.text().catch(() => '');
-        const psnip = proxyBody.replace(/\s+/g, ' ').slice(0, 200);
-        lastApi = `${req.method()} ${u.pathname} ← بروكسي ${proxyResp.status()}`;
-        say(`🌐 بروكسي ← ${proxyResp.status()}`);
-        if (proxyResp.status() >= 400) say(`📄 رد البروكسي: ${psnip || '(فارغ)'}`);
-        return route.fulfill({ response: proxyResp });
-      } catch (e) {
-        lastApi = `${req.method()} ${u.pathname} ← البروكسي فشل`;
-        say(`❌ البروكسي فشل: ${e.message.split('\n')[0]}`);
-        return route.continue();
-      }
-    };
-    if (SANDBOX) return useProxy('وضع الاختبار');
     try {
       const resp = await route.fetch({ timeout: 25000 });
       const body = await resp.text().catch(() => '');
@@ -292,11 +272,6 @@ async function attemptOnce({ firstName, lastName, say }) {
       lastApi = `${req.method()} ${u.pathname} ← ${resp.status()}`;
       say(`🌐 API ${req.method()} ${u.pathname} ← ${resp.status()}`);
       if (resp.status() >= 400) say(`📄 الرد: ${snippet || '(فارغ)'}`);
-      // Any 403/429/503 on the identity API from a datacenter IP is treated as
-      // a network-level block -> retry the same request via the site's own proxy.
-      if ([403, 429, 503].includes(resp.status())) {
-        return useProxy(`الـ API رد ${resp.status()}`);
-      }
       return route.fulfill({ response: resp });
     } catch (e) {
       return useProxy(`تعذر الوصول المباشر (${e.message.split('\n')[0]})`);
@@ -402,8 +377,8 @@ async function attemptOnce({ firstName, lastName, say }) {
 
     say('✉️ مستني إيميل التفعيل...');
     // Fail fast: if the API calls were blocked (403/404), no email will ever arrive.
-    if (/← (403|404|429|503)/.test(lastApi) || /البروكسي فشل/.test(lastApi)) {
-      throw new Error(`الـ API اتصد (آخر طلب: ${lastApi}). محتاج بروكسي سكني أو IP نضيف — شوف PROXY_URL في الإعدادات.`);
+    if (/← (403|404|429|503)/.test(lastApi)) {
+      throw new Error(`الـ API اتصد (آخر طلب: ${lastApi}). الـ IP بتاع السيرفر متعلم عليه من Cloudflare.`);
     }
     const verifyShown = await page.waitForFunction(
       () => /verify/i.test(document.body.innerText), { timeout: 30000 }
