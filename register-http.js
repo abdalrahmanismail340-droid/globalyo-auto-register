@@ -56,14 +56,16 @@ async function graphToken(acc) {
 async function waitForOTP(acc, sinceTime, timeoutMs = 180000, onTick) {
   const at = await graphToken(acc);
   const t0 = Date.now();
+  const seenIds = new Set();
   while (Date.now() - t0 < timeoutMs) {
-    const r = await fetch('https://graph.microsoft.com/v1.0/me/messages?$top=10&$orderby=receivedDateTime%20desc&$select=subject,body,receivedDateTime',
+    const r = await fetch('https://graph.microsoft.com/v1.0/me/messages?$top=10&$orderby=receivedDateTime%20desc&$select=id,subject,body,receivedDateTime',
       { headers: { Authorization: `Bearer ${at}` } });
     const j = await r.json().catch(() => ({}));
     for (const m of j.value || []) {
-      // Only emails received AFTER we requested the OTP
+      if (seenIds.has(m.id)) continue;
+      seenIds.add(m.id);
       const recvTime = new Date(m.receivedDateTime).getTime();
-      if (recvTime < sinceTime) continue;
+      if (isNaN(recvTime) || recvTime < sinceTime - 10000) continue; // 10s tolerance
       const subj = (m.subject || '').toLowerCase();
       const body = (m.body || {}).content || '';
       if (/global|yomobile|otp|verif|code/.test(subj)) {
