@@ -96,6 +96,7 @@ async function registerAccount({ firstName = 'Abood', lastName = 'Test', onProgr
   const say = (m) => { try { onProgress(m); } catch {} };
   const acc = nextAccount();
   const email = acc.email;
+  markUsed(email); // mark immediately so each run uses a fresh email
   say(`📧 الإيميل: ${email}`);
 
   // Step 1: Request OTP
@@ -119,7 +120,6 @@ async function registerAccount({ firstName = 'Abood', lastName = 'Test', onProgr
   const ver = await apiCall('/identity/email-otp-verification/', { email, otp, device_id: deviceId }, say);
   if (ver.status !== 200 && ver.status !== 201) throw new Error(`فشل التحقق: ${ver.status}`);
 
-  markUsed(email);
   const out = { email, hotmailPassword: acc.password, verifiedAt: new Date().toISOString(), apiResponse: ver.body };
   const fname = `account-${Date.now()}.json`;
   fs.writeFileSync(path.join(__dirname, fname), JSON.stringify(out, null, 2));
