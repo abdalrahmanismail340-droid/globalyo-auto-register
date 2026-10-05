@@ -401,6 +401,10 @@ async function attemptOnce({ firstName, lastName, say }) {
     await page.waitForTimeout(6000);
 
     say('✉️ مستني إيميل التفعيل...');
+    // Fail fast: if the API calls were blocked (403/404), no email will ever arrive.
+    if (/← (403|404|429|503)/.test(lastApi) || /البروكسي فشل/.test(lastApi)) {
+      throw new Error(`الـ API اتصد (آخر طلب: ${lastApi}). محتاج بروكسي سكني أو IP نضيف — شوف PROXY_URL في الإعدادات.`);
+    }
     const verifyShown = await page.waitForFunction(
       () => /verify/i.test(document.body.innerText), { timeout: 30000 }
     ).then(() => true).catch(() => false);
