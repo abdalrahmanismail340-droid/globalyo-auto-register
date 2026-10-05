@@ -118,13 +118,19 @@ async function setPassword(email, newPass, onProgress = () => {}) {
   const since = Date.now();
   const { link, token, allLinks } = await waitForResetEmail(acc, since, 180000, say);
   // Extract reset_token from link query params or path
+  // Links may be double-URL-encoded (AWS tracking wrapper) — decode first
   let resetToken = token;
   const linksToTry = [...(allLinks || []), link].filter(Boolean);
-  for (const l of linksToTry) {
+  for (let l of linksToTry) {
     if (resetToken) break;
-    const qm = l.match(/[?&](token|reset_token|code|key)=([^&]+)/i);
-    if (qm) { resetToken = decodeURIComponent(qm[2]); break; }
-    const pm = l.match(/\/([a-f0-9\-]{20,})\/?(?:\?|$)/i);
+    // Decode repeatedly (tracking wrappers double-encode)
+    let dec = l;
+    for (let i = 0; i < 3; i++) {
+      try { const d2 = decodeURIComponent(dec); if (d2 === dec) break; dec = d2; } catch { break; }
+    }
+    const qm = dec.match(/[?&](token|reset_token|code|key)=([^&]+)/i);
+    if (qm) { resetToken = qm[2]; break; }
+    const pm = dec.match(/\/([a-f0-9\-]{20,})\/?(?:\?|$)/i);
     if (pm) { resetToken = pm[1]; break; }
   }
   if (!resetToken) throw new Error('ملقتش توكن الاسترجاع في الإيميل');
