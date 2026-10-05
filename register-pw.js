@@ -3,6 +3,8 @@
  * POST /identity/registration/ {email, password, first_name, last_name, display_name, device_id}
  * Usage: node register-pw.js <email> <password> [first] [last]
  */
+const fs = require('fs');
+const path = require('path');
 const API = 'https://play.prod.yomobile.xyz/api/v1.0';
 const HEADERS = {
   'Content-Type': 'application/json',
@@ -10,12 +12,31 @@ const HEADERS = {
   'User-Agent': 'GlobalYO/4.1.5 (Android)',
 };
 
+function nextHotmail() {
+  const txt = fs.readFileSync(path.join(__dirname, 'hotmail_accounts.txt'), 'utf8');
+  let used = new Set();
+  try { used = new Set(JSON.parse(fs.readFileSync(path.join(__dirname, '.used_hotmails.json'), 'utf8'))); } catch {}
+  for (const l of txt.split('\n')) {
+    const p = l.trim().split('|');
+    if (p[0] && p[0].includes('@') && !used.has(p[0].trim().toLowerCase())) return p[0].trim();
+  }
+  throw new Error('No unused hotmails');
+}
+
+function markUsed(email) {
+  let used = new Set();
+  try { used = new Set(JSON.parse(fs.readFileSync(path.join(__dirname, '.used_hotmails.json'), 'utf8'))); } catch {}
+  used.add(email.toLowerCase());
+  fs.writeFileSync(path.join(__dirname, '.used_hotmails.json'), JSON.stringify([...used]));
+}
+
 async function main() {
-  const email = process.argv[2];
-  const password = process.argv[3];
-  const first = process.argv[4] || 'Abood';
-  const last = process.argv[5] || 'Test';
-  if (!email || !password) { console.log('Usage: node register-pw.js <email> <password> [first] [last]'); process.exit(1); }
+  const password = process.argv[2] || 'Aabdo123456';
+  const first = process.argv[3] || 'Abood';
+  const last = process.argv[4] || 'Test';
+  const email = nextHotmail();
+  markUsed(email);
+  console.log('📧', email);
 
   const deviceId = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
     const r = Math.random() * 16 | 0;
