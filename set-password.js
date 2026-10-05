@@ -94,15 +94,24 @@ async function setPassword(email, newPass, onProgress = () => {}) {
   // Step 1: Request reset token (try password-reset-token first, then password-reset)
   say('📤 بطلب توكن الاسترجاع...');
   let reqOk = false;
+  let reqBody = null;
   for (const ep of ['/identity/password-reset-token/', '/identity/password-reset/']) {
     const r = await fetch(API + ep, {
       method: 'POST', headers: HEADERS, body: JSON.stringify({ email, device_id: deviceId }),
     });
     const t = await r.text();
     say(`← ${ep} ${r.status}`);
-    if (r.ok) { reqOk = true; break; }
+    if (r.ok) { reqOk = true; try { reqBody = JSON.parse(t); } catch {} break; }
   }
   if (!reqOk) throw new Error('فشل طلب توكن الاسترجاع');
+  // The 201 response might contain the reset token directly!
+  if (reqBody) {
+    const direct = reqBody.reset_token || reqBody.token || (reqBody.data && (reqBody.data.reset_token || reqBody.data.token));
+    if (direct) {
+      say('🔑 التوكن من الـ response مباشرة');
+      return await submitNewPassword(deviceId, direct, newPass, say);
+    }
+  }
 
   // Step 2: Read reset email
   say('✉️ مستني إيميل الاسترجاع...');
@@ -122,6 +131,10 @@ async function setPassword(email, newPass, onProgress = () => {}) {
   say(`🔑 التوكن وصل`);
 
   // Step 3: Submit new password
+  return await submitNewPassword(deviceId, resetToken, newPass, say);
+}
+
+async function submitNewPassword(deviceId, resetToken, newPass, say) {
   say('🔑 بعين الباسورد الجديد...');
   const r2 = await fetch(API + '/identity/password-reset/', {
     method: 'POST', headers: HEADERS,
