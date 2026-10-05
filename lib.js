@@ -49,6 +49,25 @@ async function waitForInboxEmail(token, timeoutMs = 150000, onTick) {
   throw new Error('timed out waiting for verification email');
 }
 
+// Fallback: screenshot the captcha canvas and read it with OCR.Space (free API).
+// Set OCRSPACE_KEY env var with your own free key from https://ocr.space/ocrapi
+// (defaults to the public demo key, which is heavily rate-limited).
+async function solveCaptchaOCR(page) {
+  const key = process.env.OCRSPACE_KEY || 'helloworld';
+  const buf = await page.locator('canvas#canv').screenshot();
+  const form = new FormData();
+  form.append('apikey', key);
+  form.append('base64Image', 'data:image/png;base64,' + buf.toString('base64'));
+  form.append('OCREngine', '2');
+  form.append('scale', 'true');
+  form.append('isTable', 'false');
+  const r = await fetch('https://api.ocr.space/parse/image', { method: 'POST', body: form });
+  const j = await r.json();
+  if (j.IsErroredOnProcessing) throw new Error('ocr.space: ' + (j.ErrorMessage || 'processing error'));
+  const text = ((j.ParsedResults || [])[0] || {}).ParsedText || '';
+  return text.replace(/[^A-Za-z0-9]/g, '').slice(0, 6);
+}
+
 async function registerAccount({ firstName = 'Abood', lastName = 'Test', onProgress = () => {} } = {}) {
   const say = (m) => { try { onProgress(m); } catch (e) {} };
   const MAX_TRIES = 3;
@@ -131,13 +150,13 @@ async function attemptOnce({ firstName, lastName, say }) {
 
     if (await page.locator('canvas#canv').count()) {
       say('🧩 بحل الكابتشا...');
-      // The captcha draws on mount; wait until our fillText hook has captured the chars.
-      // Take the LAST 6 in case of a double-draw (p always holds the latest).
+      // Strategy 1: hook — exact chars captured from the canvas as drawn (100% accurate).
+      // Take the LAST 6 in case of a double-draw (the validator always holds the latest).
       const readCaptcha = () => page.evaluate(() =>
         ((window.__captchaChars || []).slice(-6).join('')));
-      try {
-        await page.waitForFunction(() => (window.__captchaChars || []).length >= 6, { timeout: 20000 });
-      } catch (e) { /* try reload fallback below */ }
+      const waitChars = () => page.waitForFunction(
+        () => (window.__captchaChars || []).length >= 6, { timeout: 20000 }).catch(() => {});
+      await waitChars();
       let answer = await readCaptcha();
       if (!answer || answer.length < 6) {
         // force a fresh draw via the site's own reload handler, then wait for it
@@ -146,19 +165,29 @@ async function attemptOnce({ firstName, lastName, say }) {
           const a = document.getElementById('reload_href');
           if (a) a.click();
         });
-        try {
-          await page.waitForFunction(() => (window.__captchaChars || []).length >= 6, { timeout: 20000 });
-        } catch (e) { /* fall through to error */ }
+        await waitChars();
         answer = await readCaptcha();
       }
+      // Strategy 2: OCR fallback — screenshot the canvas and read it with OCR.Space
       if (!answer || answer.length < 6) {
+        say('🔍 بجرب قراءة الصورة (OCR)...');
+        try {
+          answer = await solveCaptchaOCR(page);
+          if (answer) say(`🔍 الـ OCR قرأ: ${answer}`);
+        } catch (e) { say(`🔍 الـ OCR فشل: ${e.message}`); }
+      }
+      if (!answer) {
         await page.screenshot({ path: 'captcha-fail.png' }).catch(() => {});
-        throw new Error('could not capture captcha text from canvas');
+        throw new Error('could not solve captcha');
       }
       await page.locator('input#captcha, input[id="captcha"]').fill(answer);
       await killPopups();
       await page.locator('button[type="submit"]').first().click();
-      await page.waitForTimeout(2000);
+      await page.waitForTimeout(2500);
+      // if the canvas is still there, the answer was rejected -> let the retry loop handle it
+      if (await page.locator('canvas#canv').count()) {
+        throw new Error('captcha answer rejected, retrying');
+      }
     }
 
     say('📝 بملا فورم التسجيل...');

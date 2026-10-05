@@ -9,6 +9,7 @@
 3. حط المتغيرات دي في Railway (Variables):
    - `TELEGRAM_BOT_TOKEN` = توكن البوت
    - `ALLOWED_USER_ID` = الـ ID بتاعك (عشان محدش غيرك يستخدم البوت)
+   - `OCRSPACE_KEY` = (اختياري) مفتاح مجاني من [ocr.space/ocrapi](https://ocr.space/ocrapi) — خطة بديلة لقراءة الكابتشا لو فشلت الطريقة الأساسية
 4. اعمل Deploy — البوت هيفضل شغال ويستنى أوامرك
 
 أوامر البوت:
