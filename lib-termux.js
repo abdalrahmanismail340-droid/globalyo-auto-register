@@ -111,6 +111,7 @@ async function launchChromium() {
   await new Promise(r => setTimeout(r, 1000));
   const proc = spawn(CHROMIUM, [
     '--headless', '--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu',
+    '--no-zygote', '--single-process', '--disable-software-rasterizer',
     `--remote-debugging-port=${DEBUG_PORT}`,
     '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
     'about:blank',
