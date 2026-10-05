@@ -137,9 +137,11 @@ async function attemptOnce({ firstName, lastName, say }) {
       const body = await resp.text().catch(() => '');
       const snippet = body.replace(/\s+/g, ' ').slice(0, 200);
       say(`🌐 API ${req.method()} ${u.pathname} ← ${resp.status()}`);
-      if (resp.status >= 400) say(`📄 الرد: ${snippet}`);
-      if (resp.status === 403 && /just a moment|challenge-platform|attention required|cf-chl|cloudflare/i.test(body)) {
-        return useProxy('الـ API محمي بـ Cloudflare');
+      if (resp.status >= 400) say(`📄 الرد: ${snippet || '(فارغ)'}`);
+      // Any 403/429/503 on the identity API from a datacenter IP is treated as
+      // a network-level block -> retry the same request via the site's own proxy.
+      if ([403, 429, 503].includes(resp.status)) {
+        return useProxy(`الـ API رد ${resp.status}`);
       }
       return route.fulfill({ response: resp });
     } catch (e) {
