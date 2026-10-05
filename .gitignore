@@ -1,0 +1,5 @@
+node_modules/
+account-*.json
+tmp-account.json
+*.png
+*.log
