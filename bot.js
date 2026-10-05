@@ -237,12 +237,15 @@ async function handleUpdate(u) {
         const { loadToken, getCountries, getPlans } = require('./plans');
         const { token } = loadToken();
         await send(chatId, `📦 بدور على ${query}...`);
-        // Find country by name (or use as ID if it looks like UUID)
+        // Find country by name (exact match first, then starts-with, then includes)
         let cid = query;
         if (!/^[0-9a-f-]{36}$/i.test(query)) {
           const c = await getCountries(token);
           const list = Array.isArray(c) ? c : [];
-          const match = list.find(x => (x.name || '').toLowerCase().includes(query.toLowerCase()));
+          const q = query.toLowerCase();
+          const match = list.find(x => (x.name || '').toLowerCase() === q)
+            || list.find(x => (x.name || '').toLowerCase().startsWith(q))
+            || list.find(x => (x.name || '').toLowerCase().includes(q));
           if (!match) { await send(chatId, `❌ مش لاقي دولة اسمها "${query}"`); break; }
           cid = match.id || match.country_id;
           await send(chatId, `🌍 لقيت: <b>${match.name}</b>`);
@@ -289,13 +292,16 @@ async function handleUpdate(u) {
         const { loadToken } = require('./plans');
         const { token } = loadToken();
         await send(chatId, `📦 بدور على ${query}...`);
-        // Find region by name (or use as ID if UUID)
+        // Find region by name (exact match first, then starts-with, then includes)
         let rid = query;
         if (!/^[0-9a-f-]{36}$/i.test(query)) {
           const rr = await fetch(GYO_API + '/v1.0/esim/regions/', { headers: { 'Authorization': `Bearer ${token}`, 'X-PLATFORM': 'android', 'User-Agent': 'GlobalYO/4.1.5 (Android)' } });
           const rj = await rr.json();
           const rlist = Array.isArray(rj) ? rj : (rj.results || []);
-          const match = rlist.find(x => (x.name || '').toLowerCase().includes(query.toLowerCase()));
+          const q = query.toLowerCase();
+          const match = rlist.find(x => (x.name || '').toLowerCase() === q)
+            || rlist.find(x => (x.name || '').toLowerCase().startsWith(q))
+            || rlist.find(x => (x.name || '').toLowerCase().includes(q));
           if (!match) { await send(chatId, `❌ مش لاقي منطقة اسمها "${query}"`); break; }
           rid = match.id;
           await send(chatId, `🌍 لقيت: <b>${match.name}</b>`);
