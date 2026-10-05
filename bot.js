@@ -57,9 +57,9 @@ const help = `🤖 <b>Global YO Bot</b>
 /register [first] [last] — تسجيل حساب جديد
 /sethotmails — ابعت ملف الهوتميلات
 /countries — قايمة الدول
-/plans &lt;id&gt; — باقات دولة
-/regions — المناطق (Global, Europe, ...)
-/rplans &lt;id&gt; — باقات منطقة
+/plans &lt;اسم الدولة&gt; — باقات دولة (مثال: /plans oman)
+/regions — المناطق
+/rplans &lt;اسم المنطقة&gt; — باقات منطقة (مثال: /rplans global)
 /auto &lt;hours&gt; — تسجيل تلقائي كل N ساعة
 /auto off — إيقاف التلقائي
 /status — الحالة
@@ -222,7 +222,7 @@ async function handleUpdate(u) {
         for (const x of list) {
           const id = x.id || x.country_id || x.code;
           const name = x.name || x.title || x.country_name || id;
-          const line = `${name} — <code>/plans ${id}</code>\n`;
+          const line = `${name} — <code>/plans ${name}</code>\n`;
           if ((chunk + line).length > 3500) { await send(chatId, chunk); chunk = ''; }
           chunk += line;
         }
@@ -231,12 +231,22 @@ async function handleUpdate(u) {
       break;
     }
     case '/plans': {
-      const cid = args[0];
-      if (!cid) { await send(chatId, 'استخدم: /plans &lt;id&gt; — هات الـ id من /countries'); break; }
+      const query = args.join(' ');
+      if (!query) { await send(chatId, 'استخدم: <code>/plans oman</code> أو <code>/plans egypt</code>'); break; }
       try {
-        const { loadToken, getPlans } = require('./plans');
+        const { loadToken, getCountries, getPlans } = require('./plans');
         const { token } = loadToken();
-        await send(chatId, `📦 بجيب باقات ${cid}...`);
+        await send(chatId, `📦 بدور على ${query}...`);
+        // Find country by name (or use as ID if it looks like UUID)
+        let cid = query;
+        if (!/^[0-9a-f-]{36}$/i.test(query)) {
+          const c = await getCountries(token);
+          const list = Array.isArray(c) ? c : [];
+          const match = list.find(x => (x.name || '').toLowerCase().includes(query.toLowerCase()));
+          if (!match) { await send(chatId, `❌ مش لاقي دولة اسمها "${query}"`); break; }
+          cid = match.id || match.country_id;
+          await send(chatId, `🌍 لقيت: <b>${match.name}</b>`);
+        }
         const p = await getPlans(token, cid);
         const list = Array.isArray(p) ? p : [];
         if (!list.length) { await send(chatId, 'مفيش باقات للدولة دي'); break; }
@@ -264,7 +274,7 @@ async function handleUpdate(u) {
         const list = Array.isArray(j) ? j : (j.results || []);
         let chunk = '🌍 <b>المناطق:</b>\n\n';
         for (const x of list) {
-          const line = `${x.name} — <code>/rplans ${x.id}</code>\n`;
+          const line = `${x.name} — <code>/rplans ${x.name}</code>\n`;
           if ((chunk + line).length > 3500) { await send(chatId, chunk); chunk = ''; }
           chunk += line;
         }
@@ -273,12 +283,23 @@ async function handleUpdate(u) {
       break;
     }
     case '/rplans': {
-      const rid = args[0];
-      if (!rid) { await send(chatId, 'استخدم: /rplans &lt;id&gt; — هات الـ id من /regions'); break; }
+      const query = args.join(' ');
+      if (!query) { await send(chatId, 'استخدم: <code>/rplans global</code> أو <code>/rplans europe</code>'); break; }
       try {
-        const { loadToken, getPlans } = require('./plans');
+        const { loadToken } = require('./plans');
         const { token } = loadToken();
-        await send(chatId, `📦 بجيب باقات المنطقة...`);
+        await send(chatId, `📦 بدور على ${query}...`);
+        // Find region by name (or use as ID if UUID)
+        let rid = query;
+        if (!/^[0-9a-f-]{36}$/i.test(query)) {
+          const rr = await fetch(GYO_API + '/v1.0/esim/regions/', { headers: { 'Authorization': `Bearer ${token}`, 'X-PLATFORM': 'android', 'User-Agent': 'GlobalYO/4.1.5 (Android)' } });
+          const rj = await rr.json();
+          const rlist = Array.isArray(rj) ? rj : (rj.results || []);
+          const match = rlist.find(x => (x.name || '').toLowerCase().includes(query.toLowerCase()));
+          if (!match) { await send(chatId, `❌ مش لاقي منطقة اسمها "${query}"`); break; }
+          rid = match.id;
+          await send(chatId, `🌍 لقيت: <b>${match.name}</b>`);
+        }
         const r = await fetch(GYO_API + `/v5.0/esim/regions/${rid}/products/`, { headers: { 'Authorization': `Bearer ${token}`, 'X-PLATFORM': 'android', 'User-Agent': 'GlobalYO/4.1.5 (Android)' } });
         const j = await r.json();
         const list = Array.isArray(j) ? j : (j.results || j.products || []);
