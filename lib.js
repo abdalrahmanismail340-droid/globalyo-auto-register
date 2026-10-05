@@ -116,12 +116,30 @@ async function attemptOnce({ firstName, lastName, say }) {
   const browser = await chromium.launch(launchOpts);
   const ctx = await browser.newContext(ctxOpts);
   const page = await ctx.newPage();
-  if (SANDBOX) {
-    await page.route('https://play.prod.yomobile.xyz/api/v1.0/identity/**', route => {
-      const u = new URL(route.request().url());
-      route.continue({ url: 'https://www.globalyo.com/api/storefront/public-proxy' + u.pathname + u.search });
-    });
-  }
+  // Smart routing for the identity API: try direct first; if Cloudflare challenges
+  // the XHR (403 + challenge page), retry the same request through the site's own
+  // same-origin Next.js proxy (/api/storefront/public-proxy + original path).
+  await page.route('https://play.prod.yomobile.xyz/api/v1.0/identity/**', async (route) => {
+    const req = route.request();
+    const u = new URL(req.url());
+    const viaProxy = 'https://www.globalyo.com/api/storefront/public-proxy' + u.pathname + u.search;
+    const useProxy = async (why) => {
+      say(`🛡️ ${why} — بحول على سيرفر الموقع...`);
+      return route.continue({ url: viaProxy });
+    };
+    if (SANDBOX) return useProxy('وضع الاختبار');
+    try {
+      const resp = await route.fetch({ timeout: 25000 });
+      const body = await resp.text().catch(() => '');
+      say(`🌐 API ${req.method()} ${u.pathname} ← ${resp.status()}`);
+      if (resp.status === 403 && /just a moment|challenge-platform/i.test(body)) {
+        return useProxy('الـ API محمي بـ Cloudflare');
+      }
+      return route.fulfill({ response: resp });
+    } catch (e) {
+      return useProxy(`تعذر الوصول المباشر (${e.message.split('\n')[0]})`);
+    }
+  });
 
   await page.addInitScript(() => {
     window.__captchaChars = [];
@@ -212,7 +230,13 @@ async function attemptOnce({ firstName, lastName, say }) {
     await page.waitForTimeout(6000);
 
     say('✉️ مستني إيميل التفعيل...');
-    await page.waitForFunction(() => /verify/i.test(document.body.innerText), { timeout: 30000 }).catch(() => {});
+    const verifyShown = await page.waitForFunction(
+      () => /verify/i.test(document.body.innerText), { timeout: 30000 }
+    ).then(() => true).catch(() => false);
+    if (!verifyShown) {
+      const txt = await page.evaluate(() => document.body.innerText.replace(/\s+/g, ' ').slice(0, 300));
+      throw new Error('التسجيل مكتملش. الصفحة بتقول: ' + txt);
+    }
     const msg = await waitForInboxEmail(token, 150000, (s) => { if (s % 30 === 0) say(`✉️ مستني إيميل التفعيل... (${s}s)`); });
     say(`✉️ وصل الإيميل: ${msg.subject}`);
     const full = await mtm(`/messages/${msg.id}`, { headers: { Authorization: `Bearer ${token}` } });
