@@ -17,7 +17,10 @@
  */
 const fs = require('fs');
 const path = require('path');
-const { registerAccount } = require('./lib');
+// Use Termux/CDP version on Android (Playwright doesn't support Android)
+const { registerAccount } = process.env.TERMUX_VERSION
+  ? require('./lib-termux')
+  : require('./lib');
 
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 if (!TOKEN) {

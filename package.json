@@ -12,7 +12,9 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "chrome-remote-interface": "^0.34.0",
     "imapflow": "^2.2.5",
-    "playwright": "^1.63.0"
+    "playwright": "^1.63.0",
+    "ws": "^8.22.0"
   }
 }
