@@ -12,7 +12,7 @@ const path = require('path');
 const CDP = require('chrome-remote-interface');
 
 const SIGNUP_URL = 'https://www.globalyo.com/sign-up';
-const CHROMIUM = '/data/data/com.termux/files/usr/bin/chromium';
+const CHROMIUM = '/data/data/com.termux/files/usr/bin/chromium-browser';
 const DEBUG_PORT = 19222;
 
 const rand = (n, chars = 'abcdefghijklmnopqrstuvwxyz0123456789') =>
