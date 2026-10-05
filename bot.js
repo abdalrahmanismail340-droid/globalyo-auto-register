@@ -55,6 +55,9 @@ const send = (chatId, text) => tg('sendMessage', { chat_id: chatId, text, parse_
 const help = `🤖 <b>Global YO Register Bot</b>
 /register [first] [last] — تسجيل حساب جديد دلوقتي
 /sethotmails — ابعت ملف الـ txt بتاع الهوتميلات
+/countries — قايمة الدول المتاحة
+/plans &lt;id&gt; — باقات دولة معينة (هات الـ id من /countries)
+/setpassword &lt;pass&gt; — تعيين باسورد للحساب (عشان تدخل من التطبيق)
 /auto &lt;hours&gt; — تسجيل تلقائي كل N ساعة (مثال: /auto 6)
 /auto off — إيقاف الوضع التلقائي
 /status — الحالة
@@ -203,6 +206,68 @@ async function handleUpdate(u) {
         `🔁 تلقائي: ${state.autoTimer ? `كل ${state.autoHours} ساعة` : 'مقفول'}\n` +
         `✅ ناجح: ${state.done} | ❌ فاشل: ${state.failed}`);
       break;
+    case '/countries': {
+      try {
+        const { loadToken, getCountries } = require('./plans');
+        const { token } = loadToken();
+        await send(chatId, '🌍 بجيب الدول...');
+        const c = await getCountries(token);
+        const list = Array.isArray(c) ? c : [];
+        if (!list.length) { await send(chatId, 'مفيش دول راجعة من الـ API'); break; }
+        // Telegram message limit: chunk it
+        let chunk = '🌍 <b>الدول المتاحة:</b>\n\n';
+        for (const x of list) {
+          const id = x.id || x.country_id || x.code;
+          const name = x.name || x.title || x.country_name || id;
+          const line = `${name} — <code>/plans ${id}</code>\n`;
+          if ((chunk + line).length > 3500) { await send(chatId, chunk); chunk = ''; }
+          chunk += line;
+        }
+        await send(chatId, chunk);
+      } catch (e) { await send(chatId, `❌ ${e.message}`); }
+      break;
+    }
+    case '/plans': {
+      const cid = args[0];
+      if (!cid) { await send(chatId, 'استخدم: /plans &lt;id&gt; — هات الـ id من /countries'); break; }
+      try {
+        const { loadToken, getPlans } = require('./plans');
+        const { token } = loadToken();
+        await send(chatId, `📦 بجيب باقات ${cid}...`);
+        const p = await getPlans(token, cid);
+        const list = Array.isArray(p) ? p : [];
+        if (!list.length) { await send(chatId, 'مفيش باقات للدولة دي'); break; }
+        let chunk = `📦 <b>الباقات:</b>\n\n`;
+        for (const x of list) {
+          const name = x.name || x.title || x.plan_name || 'باقة';
+          const price = x.price || (x.prices && x.prices[0]) || '?';
+          const data = x.data || x.gb || x.data_allowance || x.data_included || '';
+          const validity = x.validity || x.validity_days || x.duration || '';
+          const line = `• <b>${name}</b> — ${price}${data ? ` | ${data}GB` : ''}${validity ? ` | ${validity} يوم` : ''}\n`;
+          if ((chunk + line).length > 3500) { await send(chatId, chunk); chunk = '📦 تكملة:\n\n'; }
+          chunk += line;
+        }
+        await send(chatId, chunk);
+      } catch (e) { await send(chatId, `❌ ${e.message}`); }
+      break;
+    }
+    case '/setpassword': {
+      const np = args[0];
+      if (!np || np.length < 6) { await send(chatId, 'استخدم: /setpassword &lt;باسورد 6 حروف على الأقل&gt;'); break; }
+      try {
+        const { loadToken, authHeaders, API } = require('./plans');
+        const { token, email } = loadToken();
+        await send(chatId, '🔑 بعين الباسورد...');
+        const r = await fetch(API + '/v1.0/identity/password/', {
+          method: 'POST', headers: authHeaders(token),
+          body: JSON.stringify({ password: np, password2: np }),
+        });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) { await send(chatId, `❌ فشل: ${r.status} ${JSON.stringify(j).slice(0, 200)}`); break; }
+        await send(chatId, `✅ الباسورد اتعين للحساب <code>${email}</code>\nتقدر تدخل من التطبيق دلوقتي`);
+      } catch (e) { await send(chatId, `❌ ${e.message}`); }
+      break;
+    }
     default:
       await send(chatId, 'أمر مش معروف. /help للمساعدة');
   }

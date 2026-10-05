@@ -132,6 +132,10 @@ async function registerAccount({ firstName = 'Abood', lastName = 'Test', onProgr
   if (ver.status !== 200 && ver.status !== 201) throw new Error(`فشل التحقق: ${ver.status}`);
 
   const out = { email, hotmailPassword: acc.password, verifiedAt: new Date().toISOString(), apiResponse: ver.body };
+  // Extract auth token (field name varies: access_token / access / token)
+  const b = ver.body || {};
+  out.accessToken = b.access_token || b.access || b.token || (b.data && (b.data.access_token || b.data.token)) || null;
+  out.refreshToken = b.refresh_token || b.refresh || null;
   const fname = `account-${Date.now()}.json`;
   fs.writeFileSync(path.join(__dirname, fname), JSON.stringify(out, null, 2));
   say('✅ الحساب اتعمل واتفعل!');
