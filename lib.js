@@ -93,7 +93,11 @@ async function attemptOnce({ firstName, lastName, say }) {
   say(`📧 الإيميل: ${email}`);
 
   say('🌐 بفتح المتصفح...');
-  const launchOpts = { headless: true };
+  const launchOpts = {
+    headless: true,
+    // required for Chromium in Docker / low-RAM containers (Railway)
+    args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu', '--disable-software-rasterizer'],
+  };
   const ctxOpts = {
     userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
   };
@@ -110,7 +114,7 @@ async function attemptOnce({ firstName, lastName, say }) {
       await new Promise(r => setTimeout(r, 1500));
     }
     launchOpts.proxy = { server: 'http://127.0.0.1:8899' };
-    launchOpts.args = ['--disable-web-security', '--disable-features=IsolateOrigins,site-per-process'];
+    launchOpts.args.push('--disable-web-security', '--disable-features=IsolateOrigins,site-per-process');
     ctxOpts.ignoreHTTPSErrors = true;
   }
   const browser = await chromium.launch(launchOpts);
