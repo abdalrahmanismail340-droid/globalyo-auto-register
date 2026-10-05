@@ -131,8 +131,10 @@ async function attemptOnce({ firstName, lastName, say }) {
     try {
       const resp = await route.fetch({ timeout: 25000 });
       const body = await resp.text().catch(() => '');
+      const snippet = body.replace(/\s+/g, ' ').slice(0, 200);
       say(`🌐 API ${req.method()} ${u.pathname} ← ${resp.status()}`);
-      if (resp.status === 403 && /just a moment|challenge-platform/i.test(body)) {
+      if (resp.status >= 400) say(`📄 الرد: ${snippet}`);
+      if (resp.status === 403 && /just a moment|challenge-platform|attention required|cf-chl|cloudflare/i.test(body)) {
         return useProxy('الـ API محمي بـ Cloudflare');
       }
       return route.fulfill({ response: resp });
