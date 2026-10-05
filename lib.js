@@ -165,6 +165,15 @@ async function attemptOnce({ firstName, lastName, say }) {
       await page.waitForFunction(() => !/just a moment/i.test(document.title), { timeout: 45000 });
     } catch (e) { /* best-effort */ }
     await page.goto(SIGNUP_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    // accept the cookie banner if it shows up (it can overlay the form)
+    try {
+      const acceptBtn = page.getByRole('button', { name: /accept all/i }).first();
+      if (await acceptBtn.count()) {
+        await acceptBtn.click({ timeout: 8000 });
+        say('🍪 قبلت الكوكيز');
+        await page.waitForTimeout(1000);
+      }
+    } catch (e) { /* no banner or already gone */ }
     await page.waitForFunction(
       () => /captcha/i.test(document.body.innerText) || /first name/i.test(document.body.innerText),
       { timeout: 60000 }
