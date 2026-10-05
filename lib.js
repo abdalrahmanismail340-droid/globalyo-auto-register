@@ -129,9 +129,20 @@ async function attemptOnce({ firstName, lastName, say }) {
     const u = new URL(req.url());
     const viaProxy = 'https://www.globalyo.com/api/storefront/public-proxy' + u.pathname + u.search;
     const useProxy = async (why) => {
-      lastApi = `${req.method()} ${u.pathname} ← تحويل للبروكسي (${why})`;
       say(`🛡️ ${why} — بحول على سيرفر الموقع...`);
-      return route.continue({ url: viaProxy });
+      try {
+        const proxyResp = await route.fetch({ url: viaProxy, timeout: 30000 });
+        const proxyBody = await proxyResp.text().catch(() => '');
+        const psnip = proxyBody.replace(/\s+/g, ' ').slice(0, 200);
+        lastApi = `${req.method()} ${u.pathname} ← بروكسي ${proxyResp.status()}`;
+        say(`🌐 بروكسي ← ${proxyResp.status()}`);
+        if (proxyResp.status() >= 400) say(`📄 رد البروكسي: ${psnip || '(فارغ)'}`);
+        return route.fulfill({ response: proxyResp });
+      } catch (e) {
+        lastApi = `${req.method()} ${u.pathname} ← البروكسي فشل`;
+        say(`❌ البروكسي فشل: ${e.message.split('\n')[0]}`);
+        return route.continue();
+      }
     };
     if (SANDBOX) return useProxy('وضع الاختبار');
     try {
