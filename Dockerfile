@@ -6,7 +6,7 @@ WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm install --omit=dev
 
-COPY register.js fwd-proxy.js ./
+COPY . ./
 
 # one registration run per container start; use Railway cron for repeats
 # default: Telegram bot service (always-on). Override CMD with "node register.js" for one-shot.
