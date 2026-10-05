@@ -39,6 +39,7 @@ if (!TOKEN) {
 }
 const ALLOWED = (process.env.ALLOWED_USER_ID || '').split(',').map(s => s.trim()).filter(Boolean);
 const API = `https://api.telegram.org/bot${TOKEN}`;
+const GYO_API = 'https://play.prod.yomobile.xyz/api';
 
 const state = { running: false, autoTimer: null, autoHours: 0, done: 0, failed: 0 };
 
@@ -260,7 +261,7 @@ async function handleUpdate(u) {
         const { loadToken } = require('./plans');
         const { token } = loadToken();
         await send(chatId, '🌍 بجيب المناطق...');
-        const r = await fetch(API + '/v1.0/esim/regions/', { headers: { 'Authorization': `Bearer ${token}`, 'X-PLATFORM': 'android', 'User-Agent': 'GlobalYO/4.1.5 (Android)' } });
+        const r = await fetch(GYO_API + '/v1.0/esim/regions/', { headers: { 'Authorization': `Bearer ${token}`, 'X-PLATFORM': 'android', 'User-Agent': 'GlobalYO/4.1.5 (Android)' } });
         const j = await r.json();
         const list = Array.isArray(j) ? j : (j.results || []);
         let chunk = '🌍 <b>المناطق:</b>\n\n';
@@ -280,7 +281,7 @@ async function handleUpdate(u) {
         const { loadToken, getPlans } = require('./plans');
         const { token } = loadToken();
         await send(chatId, `📦 بجيب باقات المنطقة...`);
-        const r = await fetch(API + `/v5.0/esim/regions/${rid}/products/`, { headers: { 'Authorization': `Bearer ${token}`, 'X-PLATFORM': 'android', 'User-Agent': 'GlobalYO/4.1.5 (Android)' } });
+        const r = await fetch(GYO_API + `/v5.0/esim/regions/${rid}/products/`, { headers: { 'Authorization': `Bearer ${token}`, 'X-PLATFORM': 'android', 'User-Agent': 'GlobalYO/4.1.5 (Android)' } });
         const j = await r.json();
         const list = Array.isArray(j) ? j : (j.results || j.products || []);
         if (!list.length) { await send(chatId, 'مفيش باقات للمنطقة دي'); break; }
@@ -311,7 +312,7 @@ async function handleUpdate(u) {
         // Validate promo if given (non-blocking - endpoint may not exist)
         if (promo) {
           try {
-            const pr = await fetch(API + `/v1.0/esim/promo-codes/${promo}/validate/`, { headers: H });
+            const pr = await fetch(GYO_API + `/v1.0/esim/promo-codes/${promo}/validate/`, { headers: H });
             if (pr.ok) await send(chatId, `✅ الكود شغال!`);
           } catch (e) {}
         }
@@ -323,7 +324,7 @@ async function handleUpdate(u) {
           yo_calls_enabled: false,
           ...(promo && { promo_code: promo }),
         };
-        const r = await fetch(API + '/v1.0/esim/orders/', {
+        const r = await fetch(GYO_API + '/v1.0/esim/orders/', {
           method: 'POST', headers: H, body: JSON.stringify(body),
         });
         const t = await r.text();
